@@ -1,28 +1,34 @@
-name: Build G3D
+name: Build G3D on GitHub
 
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch:
+  workflow_dispatch: # Pozwala uruchomić budowanie ręcznie przyciskiem
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
+      - name: Pobierz kod repozytorium
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Skonfiguruj Pythona
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Setup MSBuild and Visual Studio environment
+      - name: Skonfiguruj MSBuild i Visual Studio
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build G3D Library
+      - name: Skompiluj projekt w chmurze
         run: |
           python buildg3d --install release lib
+
+      - name: Zapisz zbudowane pliki (Artefakty)
+        uses: actions/upload-artifact@v4
+        with:
+          name: g3d-build-release
+          path: build/
