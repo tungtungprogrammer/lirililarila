@@ -1,5 +1,3 @@
-# Place this file at .github/workflows/build.yml in your repo.
-# Repo layout expected: CMakeLists.txt + src/ at the repo root (the OldBloxStudio zip contents).
 name: build
 
 on:
@@ -29,35 +27,66 @@ jobs:
         with:
           arch: x64
 
-      # buildg3d copies headers + prebuilt MSVC libs (FFmpeg, PhysX, TBB, ...) into G3D/build.
-      # Its own MSBuild call targets the old .NET Framework MSBuild and is expected to fail,
-      # so failure here is ignored; we build the solution ourselves in the next step.
+      # G3D's pre-build events call bin\CopyIfNewer.exe, an old prebuilt binary that crashes on
+      # current Windows with 0xC0000135 (missing DLL). Replace every call with a small Python shim
+      # that uses G3D's own bin/ice/copyifnewer.py.
+      - name: Replace broken CopyIfNewer.exe with a Python shim
+        shell: pwsh
+        run: |
+          $shim = @'
+          import os, sys
+          sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+          from ice.copyifnewer import copyIfNewer
+          args = [a for a in sys.argv[1:] if not a.startswith('--')]
+          if len(args) >= 2:
+              copyIfNewer(args[0], args[1])
+          sys.exit(0)
+          '@
+          Set-Content -Path G3D/bin/copyifnewer_shim.py -Value $shim -Encoding utf8
+          $pattern = '"\$\(ProjectDir\)\.\.\\bin\\copyifnewer"'
+          $repl    = 'python "$(ProjectDir)..\bin\copyifnewer_shim.py"'
+          $n = 0
+          Get-ChildItem G3D/VisualStudio/*.vcxproj | ForEach-Object {
+            $t = [IO.File]::ReadAllText($_.FullName)
+            $u = [regex]::Replace($t, $pattern, $repl)
+            if ($u -ne $t) { [IO.File]::WriteAllText($_.FullName, $u); $n++ }
+          }
+          Write-Host "Patched $n project files"
+
+      # Stages headers + prebuilt MSVC libs (FFmpeg, PhysX, TBB, ...) into G3D/build.
+      # Its own Debug/freeimage MSBuild call targets the v140 toolset and is expected to fail.
       - name: Stage G3D headers and prebuilt libs
         working-directory: G3D
         continue-on-error: true
         run: python buildg3d --install release lib
 
-      - name: Build G3D with MSBuild
-        working-directory: G3D
-        run: >
-          msbuild VisualStudio/G3D.sln /m
-          /p:Configuration=Release /p:Platform=x64
-          /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
-
-      - name: List G3D build output (for debugging paths)
+      - name: Build G3D libraries (Release x64)
         shell: pwsh
         run: |
-          Get-ChildItem G3D/build/lib -Filter *.lib | Select-Object Name
-          Get-ChildItem G3D/build/include -Directory | Select-Object Name
+          $projects = 'zlib.lib','zip.lib','glfw.lib','glew.lib','freeimage.lib','enet.lib',
+                      'assimp.lib','civetweb.lib','nfd.lib','qrencode.lib','G3D.lib','GLG3D.lib'
+          foreach ($p in $projects) {
+            Write-Host "=== $p ==="
+            msbuild "G3D/VisualStudio/$p.vcxproj" /m /nologo /v:m `
+              /p:Configuration=Release /p:Platform=x64 `
+              /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+            if ($LASTEXITCODE -ne 0) { throw "MSBuild failed on $p" }
+          }
+
+      - name: List G3D build output
+        shell: pwsh
+        run: |
+          Get-ChildItem G3D/build/lib -Filter *.lib | Select-Object -ExpandProperty Name
+          Test-Path G3D/build/include/G3D/G3DAll.h
 
       - name: Configure Studio
         shell: pwsh
         run: |
           $ws = $env:GITHUB_WORKSPACE -replace '\\','/'
           $libs = Get-ChildItem G3D/build/lib -Filter *.lib |
-                  Where-Object { $_.Name -notmatch 'DEBUG|CHECKED' } |
+                  Where-Object { $_.Name -notmatch 'DEBUG|CHECKED|fmodL' -and $_.Name -notmatch 'd\.lib$' } |
                   ForEach-Object { $_.FullName -replace '\\','/' }
-          $libs += @('opengl32','gdi32','winmm','ws2_32','user32','shell32','ole32','advapi32')
+          $libs += @('opengl32','glu32','gdi32','winmm','ws2_32','user32','shell32','ole32','advapi32','comdlg32','iphlpapi')
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
             "-DG3D_INCLUDE_DIRS=$ws/G3D/build/include" `
             "-DG3D_LIBRARIES=$($libs -join ';')"
