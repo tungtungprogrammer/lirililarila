@@ -1,6 +1,8 @@
 #include "Studio.h"
 
-Studio::Studio(const GApp::Settings& settings) : GApp(settings) {}
+Studio::Studio(const GApp::Settings& settings) : GApp(settings) {
+    renderDevice->setColorClearValue(Color3(0.55f, 0.75f, 0.95f));   // sky blue
+}
 
 void Studio::buildDefaultPlace() {
     m_workspace = std::make_shared<Workspace>();
@@ -14,8 +16,10 @@ void Studio::onInit() {
     GApp::onInit();
     showRenderingStats = false;
     buildDefaultPlace();
-    activeCamera()->setPosition(Point3(12, 8, 12));
-    activeCamera()->lookAt(Point3(0, 1, 0));
+    // Start camera (the debug controller drives the camera: right mouse + WASD)
+    m_debugCamera->setPosition(Point3(12, 8, 12));
+    m_debugCamera->lookAt(Point3(0, 1, 0));
+    m_debugController->setFrame(m_debugCamera->frame());
 }
 
 bool Studio::onEvent(const GEvent& e) {
@@ -59,10 +63,14 @@ void Studio::drawWorkspace(RenderDevice* rd) {
     }
 }
 
-void Studio::onGraphics3D(RenderDevice* rd, Array<shared_ptr<Surface>>& surface3D) {
-    GApp::onGraphics3D(rd, surface3D);   // sky, lighting, default pipeline
-    rd->pushState();
-    rd->setProjectionAndCameraMatrix(activeCamera()->projection(), activeCamera()->frame());
+void Studio::onGraphics3D(RenderDevice* rd, Array<shared_ptr<Surface> >& surface3D) {
+    // The framework has already set up the camera; just clear and draw (same as the G3D tinyStarter sample).
+    rd->swapBuffers();
+    rd->clear();
     drawWorkspace(rd);
-    rd->popState();
+    drawDebugShapes();
+}
+
+void Studio::onGraphics2D(RenderDevice* rd, Array<shared_ptr<Surface2D> >& surface2D) {
+    Surface2D::sortAndRender(rd, surface2D);
 }
