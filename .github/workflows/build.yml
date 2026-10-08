@@ -60,18 +60,24 @@ jobs:
         continue-on-error: true
         run: python buildg3d --install release lib
 
+      # G3D is old C++: it uses std::auto_ptr / std::binary_function, which newer MSVC STLs hide.
+      # The CL environment variable is read by cl.exe, so this applies to every library project.
       - name: Build G3D libraries (Release x64)
         shell: pwsh
+        env:
+          CL: /D_HAS_AUTO_PTR_ETC=1 /D_HAS_UNARY_BINARY_FUNCTION=1 /D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS /D_CRT_SECURE_NO_WARNINGS
         run: |
           $projects = 'zlib.lib','zip.lib','glfw.lib','glew.lib','freeimage.lib','enet.lib',
                       'assimp.lib','civetweb.lib','nfd.lib','qrencode.lib','G3D.lib','GLG3D.lib'
+          $failed = @()
           foreach ($p in $projects) {
             Write-Host "=== $p ==="
-            msbuild "G3D/VisualStudio/$p.vcxproj" /m /nologo /v:m `
+            msbuild "G3D/VisualStudio/$p.vcxproj" /m /nologo /v:m /clp:ErrorsOnly `
               /p:Configuration=Release /p:Platform=x64 `
               /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
-            if ($LASTEXITCODE -ne 0) { throw "MSBuild failed on $p" }
+            if ($LASTEXITCODE -ne 0) { $failed += $p }
           }
+          if ($failed.Count -gt 0) { throw "MSBuild failed on: $($failed -join ', ')" }
 
       - name: List G3D build output
         shell: pwsh
