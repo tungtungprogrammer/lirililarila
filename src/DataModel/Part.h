@@ -1,5 +1,5 @@
 #pragma once
-#include <G3D/G3D.h>
+#include <G3D/G3DAll.h>
 #include "Instance.h"
 
 class Part : public Instance {
