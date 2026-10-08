@@ -1,4 +1,4 @@
-name: Build G3D with MinGW64
+name: Build G3D with CMake & MinGW64
 
 on:
   push:
@@ -28,21 +28,18 @@ jobs:
             make
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-python
 
-      - name: Skompiluj projekt w MSYS2 (MinGW64)
+      - name: Skompiluj projekt za pomocą CMake
         shell: msys2 {0}
         run: |
-          make
-          # Jeśli zamiast samych poleceń make używasz skryptu python, odkomentuj poniższą linię:
-          # python buildg3d --install release lib
+          mkdir -p build
+          cd build
+          cmake -G "Unix Makefiles" ..
+          make -j$(nproc)
 
       - name: Zapisz zbudowane pliki (Artefakty)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: g3d-build-mingw
-          path: |
-            build/
-            *.a
-            *.exe
+          path: build/
