@@ -1,48 +1,79 @@
-name: Build Project with RomkoSI G3D
+# Place this file at .github/workflows/build.yml in your repo.
+# Repo layout expected: CMakeLists.txt + src/ at the repo root (the OldBloxStudio zip contents).
+name: build
 
 on:
   push:
-    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  windows-msvc:
+    runs-on: windows-2022
     steps:
-      - name: Pobierz kod repozytorium
+      - name: Checkout Studio
         uses: actions/checkout@v4
 
-      - name: Pobierz bibliotekę G3D (RomkoSI)
-        run: |
-          git clone https://github.com/RomkoSI/G3D.git ../G3D
-
-      - name: Skonfiguruj MSYS2 i MinGW64
-        uses: msys2/setup-msys2@v2
+      - name: Checkout G3D
+        uses: actions/checkout@v4
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            git
-            make
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
+          repository: RomkoSI/G3D
+          path: G3D
 
-      - name: Skompiluj projekt za pomocą CMake
-        shell: msys2 {0}
-        run: |
-          mkdir -p build
-          cd build
-          cmake -G "Unix Makefiles" \
-            -DCMAKE_INCLUDE_PATH="../G3D/G3D10/G3D.lib/include" \
-            -DCMAKE_CXX_FLAGS="-I../G3D/G3D10/G3D.lib/include" ..
-          make -j$(nproc)
-
-      - name: Zapisz zbudowane pliki (Artefakty)
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/setup-python@v5
         with:
-          name: g3d-build-mingw
-          path: build/
+          python-version: "3.x"
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # buildg3d copies headers + prebuilt MSVC libs (FFmpeg, PhysX, TBB, ...) into G3D/build.
+      # Its own MSBuild call targets the old .NET Framework MSBuild and is expected to fail,
+      # so failure here is ignored; we build the solution ourselves in the next step.
+      - name: Stage G3D headers and prebuilt libs
+        working-directory: G3D
+        continue-on-error: true
+        run: python buildg3d --install release lib
+
+      - name: Build G3D with MSBuild
+        working-directory: G3D
+        run: >
+          msbuild VisualStudio/G3D.sln /m
+          /p:Configuration=Release /p:Platform=x64
+          /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+
+      - name: List G3D build output (for debugging paths)
+        shell: pwsh
+        run: |
+          Get-ChildItem G3D/build/lib -Filter *.lib | Select-Object Name
+          Get-ChildItem G3D/build/include -Directory | Select-Object Name
+
+      - name: Configure Studio
+        shell: pwsh
+        run: |
+          $ws = $env:GITHUB_WORKSPACE -replace '\\','/'
+          $libs = Get-ChildItem G3D/build/lib -Filter *.lib |
+                  Where-Object { $_.Name -notmatch 'DEBUG|CHECKED' } |
+                  ForEach-Object { $_.FullName -replace '\\','/' }
+          $libs += @('opengl32','gdi32','winmm','ws2_32','user32','shell32','ole32','advapi32')
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            "-DG3D_INCLUDE_DIRS=$ws/G3D/build/include" `
+            "-DG3D_LIBRARIES=$($libs -join ';')"
+
+      - name: Build Studio
+        run: cmake --build build --config Release
+
+      - name: Collect runtime files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/Release/Studio.exe dist/
+          Copy-Item G3D/build/bin/*.dll dist/ -ErrorAction SilentlyContinue
+          Copy-Item G3D/data-files dist/data-files -Recurse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OldBloxStudio-windows
+          path: dist
