@@ -1,4 +1,4 @@
-name: Build G3D with CMake & MinGW64
+name: Build Project with RomkoSI G3D
 
 on:
   push:
@@ -14,9 +14,10 @@ jobs:
     steps:
       - name: Pobierz kod repozytorium
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
+
+      - name: Pobierz bibliotekę G3D (RomkoSI)
+        run: |
+          git clone https://github.com/RomkoSI/G3D.git ../G3D
 
       - name: Skonfiguruj MSYS2 i MinGW64
         uses: msys2/setup-msys2@v2
@@ -34,7 +35,9 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          cmake -G "Unix Makefiles" ..
+          cmake -G "Unix Makefiles" \
+            -DCMAKE_INCLUDE_PATH="../G3D/G3D10/G3D.lib/include" \
+            -DCMAKE_CXX_FLAGS="-I../G3D/G3D10/G3D.lib/include" ..
           make -j$(nproc)
 
       - name: Zapisz zbudowane pliki (Artefakty)
