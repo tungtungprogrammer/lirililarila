@@ -53,6 +53,26 @@ jobs:
           }
           Write-Host "Patched $n project files"
 
+      # Current MSVC STL removed things this old code uses. Patch the sources directly:
+      #  - std::_Hash_seq (only used by a dead stdext::hash_value helper in G3DString.h)
+      #  - std::binary_function (OpenEXR in FreeImage)
+      #  - std::auto_ptr (Win32Window)
+      - name: Patch old C++ in G3D sources
+        shell: pwsh
+        run: |
+          function Patch($path, $pattern, $repl) {
+            $t = [IO.File]::ReadAllText($path)
+            $u = [regex]::Replace($t, $pattern, $repl)
+            if ($u -eq $t) { throw "Patch did not apply to $path" }
+            [IO.File]::WriteAllText($path, $u)
+            Write-Host "Patched $path"
+          }
+          Patch 'G3D/G3D.lib/include/G3D/G3DString.h' '#if defined\(G3D_64BIT\) && _MSC_VER(\r?\n// For use with hash_map)' '#if 0$1'
+          Patch 'G3D/freeimage.lib/source/OpenEXR/IlmImf/ImfAttribute.cpp' 'struct NameCompare\s*:\s*std::binary_function\s*<[^>]*>' 'struct NameCompare'
+          Patch 'G3D/GLG3D.lib/include/GLG3D/Win32Window.h' 'std::auto_ptr<Win32Window>' 'std::unique_ptr<Win32Window>'
+          Patch 'G3D/GLG3D.lib/source/Win32Window.cpp' 'std::auto_ptr<Win32Window> s\(NULL\)' 'std::unique_ptr<Win32Window> s(nullptr)'
+          Patch 'G3D/GLG3D.lib/source/Win32Window.cpp' 'std::auto_ptr<Win32Window>' 'std::unique_ptr<Win32Window>'
+
       # Stages headers + prebuilt MSVC libs (FFmpeg, PhysX, TBB, ...) into G3D/build.
       # Its own Debug/freeimage MSBuild call targets the v140 toolset and is expected to fail.
       - name: Stage G3D headers and prebuilt libs
