@@ -57,6 +57,7 @@ jobs:
       #  - std::_Hash_seq (only used by a dead stdext::hash_value helper in G3DString.h)
       #  - std::binary_function (OpenEXR in FreeImage)
       #  - std::auto_ptr (Win32Window)
+      #  - lrintf redefinition (OpenJPEG; modern MSVC already provides it)
       - name: Patch old C++ in G3D sources
         shell: pwsh
         run: |
@@ -69,6 +70,7 @@ jobs:
           }
           Patch 'G3D/G3D.lib/include/G3D/G3DString.h' '#if defined\(G3D_64BIT\) && _MSC_VER(\r?\n// For use with hash_map)' '#if 0$1'
           Patch 'G3D/freeimage.lib/source/OpenEXR/IlmImf/ImfAttribute.cpp' 'struct NameCompare\s*:\s*std::binary_function\s*<[^>]*>' 'struct NameCompare'
+          Patch 'G3D/freeimage.lib/source/LibOpenJPEG/opj_includes.h' '#if defined\(_MSC_VER\) \|\| defined\(__BORLANDC__\)(\r?\nstatic INLINE long lrintf)' '#if (defined(_MSC_VER) && _MSC_VER < 1800) || defined(__BORLANDC__)$1'
           Patch 'G3D/GLG3D.lib/include/GLG3D/Win32Window.h' 'std::auto_ptr<Win32Window>' 'std::unique_ptr<Win32Window>'
           Patch 'G3D/GLG3D.lib/source/Win32Window.cpp' 'std::auto_ptr<Win32Window> s\(NULL\)' 'std::unique_ptr<Win32Window> s(nullptr)'
           Patch 'G3D/GLG3D.lib/source/Win32Window.cpp' 'std::auto_ptr<Win32Window>' 'std::unique_ptr<Win32Window>'
