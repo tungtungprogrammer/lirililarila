@@ -82,6 +82,24 @@ jobs:
         continue-on-error: true
         run: python buildg3d --install release lib
 
+      # buildg3d's staging copy of third-party headers/libs does not reliably land in G3D/build under CI
+      # (tbb/tbb.h was missing when compiling Studio), so copy them explicitly.
+      - name: Stage third-party headers, libs and DLLs
+        shell: pwsh
+        run: |
+          $g = "$env:GITHUB_WORKSPACE/G3D"
+          New-Item -ItemType Directory -Force "$g/build/include","$g/build/lib","$g/build/bin" | Out-Null
+          foreach ($d in 'tbb/include','embree/include','physx/include','ffmpeg/win64/include','openvr/include','fmod/include') {
+            Copy-Item "$g/$d/*" "$g/build/include" -Recurse -Force
+          }
+          foreach ($d in 'tbb/win64/lib','embree/win64/lib','fmod/lib-windows','openvr/win64/lib','physx/win64/lib','ffmpeg/win64/lib') {
+            Get-ChildItem "$g/$d" -Filter *.lib -ErrorAction SilentlyContinue | Copy-Item -Destination "$g/build/lib" -Force
+          }
+          foreach ($d in 'tbb/win64/bin','embree/win64/bin','fmod/bin-windows','openvr/win64/bin','physx/win64/bin','ffmpeg/win64/bin') {
+            Get-ChildItem "$g/$d" -Filter *.dll -ErrorAction SilentlyContinue | Copy-Item -Destination "$g/build/bin" -Force
+          }
+          Test-Path "$g/build/include/tbb/tbb.h"
+
       # G3D is old C++: it uses std::auto_ptr / std::binary_function, which newer MSVC STLs hide.
       # The CL environment variable is read by cl.exe, so this applies to every library project.
       - name: Build G3D libraries (Release x64)
