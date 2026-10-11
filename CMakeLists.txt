@@ -18,18 +18,18 @@ set(SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 file(GLOB MODEL_SOURCES ${SRC}/DataModel/*.cpp)
 add_library(model STATIC ${MODEL_SOURCES})
-target_include_directories(model PUBLIC ${SRC} ${SRC}/DataModel)
+target_include_directories(model PUBLIC ${SRC})
 target_compile_features(model PUBLIC cxx_std_14)
 
 add_library(render STATIC
     ${SRC}/Render/Viewport.cpp ${SRC}/Render/MeshBuilder.cpp ${SRC}/Render/Interaction.cpp)
-target_include_directories(render PUBLIC ${SRC} ${SRC}/Render ${G3D_INCLUDE_DIRS})
+target_include_directories(render PUBLIC ${SRC} ${G3D_INCLUDE_DIRS})
 set_target_properties(render PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON)
 target_link_libraries(render PUBLIC model ${G3D_LIBRARIES})
 
 file(GLOB UI_SOURCES ${SRC}/UI/*.cpp)
 add_library(ui STATIC ${UI_SOURCES})
-target_include_directories(ui PUBLIC ${SRC} ${SRC}/UI)
+target_include_directories(ui PUBLIC ${SRC})
 set_target_properties(ui PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 target_link_libraries(ui PUBLIC model Qt6::Widgets)
 
