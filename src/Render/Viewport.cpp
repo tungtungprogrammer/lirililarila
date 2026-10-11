@@ -186,6 +186,7 @@ public:
     void onSimulation(RealTime rdt, SimTime sdt, SimTime idt) override {
         GApp::onSimulation(rdt, sdt, idt);
         if (m_editor.takeCameraReset()) m_camera = FlyCamera();
+        m_editor.advance(float(rdt));
         m_dt = float(std::min(rdt, 0.1));
         m_editor.setCamera(m_camera.position, m_camera.forward());
     }
@@ -205,7 +206,7 @@ public:
         glViewport(0, 0, int(w), int(h));
         glDisable(GL_SCISSOR_TEST);
 
-        if (m_meshVersion != m_editor.version()) rebuildScene();
+        if (m_meshVersion != m_editor.version() || m_simVersionSeen != m_editor.simVersion()) rebuildScene();
         const LightingPreset L = lightingPreset(m_editor.lighting());
 
         rd->setColorClearValue(Color3(L.horizon[0], L.horizon[1], L.horizon[2]));
@@ -241,6 +242,7 @@ public:
         rd->setDepthWrite(true);
         rd->setCullFace(CullFace::BACK);
         drawMesh(rd, m_scene, vp, false, L);
+        drawMesh(rd, m_sceneDyn, vp, false, L);
         rd->popState();
 
         // see-through parts, blended over everything opaque
@@ -278,17 +280,25 @@ public:
     void onGraphics2D(RenderDevice*, Array<shared_ptr<Surface2D>>&) override {}
 
 private:
+    // Anchored opaque parts never move, so they are only rebuilt when the user edits something.
+    // Everything that can move (or is see-through) is rebuilt whenever the physics advances.
     void rebuildScene() {
-        MeshData m, glass;
         std::vector<Part*> parts;
         m_editor.workspace()->collectParts(parts);
+        const bool staticStale = m_meshVersion != m_editor.version();
+        MeshData fixedMesh, moving, glass;
         for (const Part* p : parts) {
             if (p->transparency >= 0.95f) continue;                    // invisible
-            meshbuilder::addPart(p->transparency > 0.0f ? glass : m, *p);
+            if (p->transparency > 0.0f) meshbuilder::addPart(glass, *p);
+            else if (!p->anchored)      meshbuilder::addPart(moving, *p);
+            else if (staticStale)       meshbuilder::addPart(fixedMesh, *p);
         }
-        m_scene = upload(m, VertexBuffer::WRITE_ONCE);
-        m_sceneAlpha = upload(glass, VertexBuffer::WRITE_ONCE);
+        if (staticStale) m_scene = upload(fixedMesh, VertexBuffer::WRITE_ONCE);
+        const VertexBuffer::UsageHint hint = m_editor.simulating() ? VertexBuffer::WRITE_EVERY_FRAME : VertexBuffer::WRITE_ONCE;
+        m_sceneDyn = upload(moving, hint);
+        m_sceneAlpha = upload(glass, hint);
         m_meshVersion = m_editor.version();
+        m_simVersionSeen = m_editor.simVersion();
     }
 
     void drawMesh(RenderDevice* rd, const shared_ptr<GpuMesh>& g, const float vp[16], bool flat, const LightingPreset& L) {
@@ -330,7 +340,8 @@ private:
 
     shared_ptr<Shader>  m_sceneShader, m_skyShader;
     AttributeArray      m_skyPos;
-    shared_ptr<GpuMesh> m_scene, m_sceneAlpha;
+    shared_ptr<GpuMesh> m_scene, m_sceneDyn, m_sceneAlpha;
+    unsigned long m_simVersionSeen = 0;
 };
 
 class ViewportImpl : public IViewport {

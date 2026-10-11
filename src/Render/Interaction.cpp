@@ -33,7 +33,7 @@ Vec3 Interaction::handleAnchor(const Part& p, int axis, int sign, float scale) c
 Interaction::HandleRef Interaction::pickHandle(const geom::Ray& ray, const Vec3& cam) const {
     HandleRef best;
     Part* p = m_editor.selected();
-    if (!p || m_editor.tool() == Tool::Select) return best;
+    if (!p || m_editor.tool() == Tool::Select || m_editor.simulating()) return best;
     const float s = handleScale(*p, cam);
     float bestT = 1e30f;
     for (int axis = 0; axis < 3; ++axis)
@@ -49,6 +49,7 @@ void Interaction::hover(const geom::Ray& ray, const Vec3& cam) {
 }
 
 void Interaction::mouseDown(const geom::Ray& ray, const Vec3& cam) {
+    if (m_editor.simulating()) { m_editor.select(pick(ray)); return; }     // no dragging while Run is active
     const HandleRef h = pickHandle(ray, cam);
     Part* sel = m_editor.selected();
     if (h.axis >= 0 && sel) {
@@ -130,7 +131,7 @@ void Interaction::buildOverlays(MeshData& box, MeshData& handles, const Vec3& ca
     Part* p = m_editor.selected();
     if (!p) return;
     meshbuilder::addFrame(box, p->position, p->orientation, p->size * 0.5f + Vec3(0.02f, 0.02f, 0.02f), 0.03f, kSelectColor);
-    if (m_editor.tool() == Tool::Select) return;
+    if (m_editor.tool() == Tool::Select || m_editor.simulating()) return;
 
     const float s = handleScale(*p, cam);
     for (int axis = 0; axis < 3; ++axis)
