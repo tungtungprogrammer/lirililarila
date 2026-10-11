@@ -13,7 +13,7 @@ struct PartState {
     Mat3  orientation;
     Vec3  size = Vec3(4, 1.2f, 2);
     int   brickColor = kBrickMediumStoneGrey;
-    bool  anchored = true;
+    bool  anchored = false;
     SurfaceType topSurface = SurfaceType::Studs;
     PartShape shape = PartShape::Block;
     float transparency = 0.0f;     // 0 opaque .. 1 invisible (stored in steps of 0.1)
@@ -33,7 +33,7 @@ public:
     Mat3  orientation;
     Vec3  size = Vec3(4, 1.2f, 2);
     int   brickColor = kBrickMediumStoneGrey;
-    bool  anchored = true;
+    bool  anchored = false;
     SurfaceType topSurface = SurfaceType::Studs;
     PartShape shape = PartShape::Block;
     float transparency = 0.0f;

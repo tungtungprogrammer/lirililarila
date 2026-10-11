@@ -15,6 +15,7 @@ void Editor::newPlace() {
     base.position = Vec3(0, -0.5f, 0);
     base.size = Vec3(512, 1, 512);
     base.brickColor = kBrickBrightGreen;
+    base.anchored = true;
     ws->createPart(base);
 
     PartState b;
@@ -27,6 +28,12 @@ void Editor::newPlace() {
 }
 
 void Editor::resetPlace(const std::shared_ptr<Workspace>& ws, const std::string& filePath) {
+    if (m_run != RunState::Stopped) {      // the old place is going away; nothing to restore
+        m_run = RunState::Stopped;
+        m_physics.clear();
+        m_snapshot.clear();
+        runStateChanged();
+    }
     m_workspace = ws;
     m_selected = nullptr;
     m_undo.clear();
@@ -122,6 +129,7 @@ void Editor::record(Command c) {
 // ---------------------------------------------------------------- edits
 
 Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickColor, PartShape shape) {
+    if (editBlocked()) return nullptr;
     // Aim at the ground in front of the camera, falling back to a point in the air.
     Vec3 pos = m_camPos + m_camLook * 14.0f;
     if (m_camLook.y < -0.05f) {
@@ -152,6 +160,7 @@ Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickCol
 }
 
 void Editor::deleteSelected() {
+    if (editBlocked()) return;
     if (!m_selected) { return; }
     std::shared_ptr<Part> part = sharedPart(m_selected);
     const std::size_t index = m_workspace->indexOf(part.get());
@@ -172,12 +181,14 @@ void Editor::copySelected() {
 }
 
 void Editor::cutSelected() {
+    if (editBlocked()) return;
     if (!m_selected) { return; }
     copySelected();
     deleteSelected();
 }
 
 void Editor::paste() {
+    if (editBlocked()) return;
     if (!m_hasClipboard) { return; }
     PartState s = m_clipboard;
     s.position = s.position + Vec3(1, 0, 1);
@@ -193,6 +204,7 @@ void Editor::paste() {
 }
 
 void Editor::duplicateSelected() {
+    if (editBlocked()) return;
     if (!m_selected) { return; }
     PartState s = m_selected->state();
     s.position = s.position + Vec3(1, 0, 1);
@@ -208,7 +220,7 @@ void Editor::duplicateSelected() {
 }
 
 void Editor::setPartState(Part* part, const PartState& state, const std::string& description) {
-    if (!part) { return; }
+    if (!part || editBlocked()) { return; }
     const PartState old = part->state();
     if (old == state) { return; }
     std::shared_ptr<Part> sp = sharedPart(part);
@@ -221,6 +233,7 @@ void Editor::setPartState(Part* part, const PartState& state, const std::string&
 }
 
 void Editor::rotateSelected(int axis) {
+    if (editBlocked()) return;
     if (!m_selected) { return; }
     PartState s = m_selected->state();
     const Mat3 r = (axis == 0) ? Mat3::rotationX(90) : (axis == 1) ? Mat3::rotationY(90) : Mat3::rotationZ(90);
@@ -229,7 +242,7 @@ void Editor::rotateSelected(int axis) {
 }
 
 void Editor::beginDrag(Part* part) {
-    if (!part) { return; }
+    if (!part || editBlocked()) { return; }
     m_dragStart = part->state();
     m_dragging = true;
 }
@@ -259,6 +272,7 @@ void Editor::endDrag(Part* part, const std::string& description) {
 // ---------------------------------------------------------------- history
 
 void Editor::undo() {
+    if (editBlocked()) return;
     if (m_undo.empty()) { return; }
     Command c = std::move(m_undo.back());
     m_undo.pop_back();
@@ -270,6 +284,7 @@ void Editor::undo() {
 }
 
 void Editor::redo() {
+    if (editBlocked()) return;
     if (m_redo.empty()) { return; }
     Command c = std::move(m_redo.back());
     m_redo.pop_back();
@@ -314,4 +329,70 @@ int Editor::partCount() const {
     std::vector<Part*> parts;
     m_workspace->collectParts(parts);
     return int(parts.size());
+}
+
+// ---------------------------------------------------------------- Run (physics)
+
+bool Editor::editBlocked() {
+    if (m_run == RunState::Stopped) return false;
+    log("Stop the simulation (Shift+F5) before editing.");
+    return true;
+}
+
+void Editor::play() {
+    if (m_run == RunState::Running) return;
+    if (m_run == RunState::Paused) {
+        m_run = RunState::Running;
+        log("Resumed");
+        runStateChanged();
+        return;
+    }
+    // Stopped -> Running: remember everything so Stop can put it back
+    m_snapshot.clear();
+    std::vector<Part*> parts;
+    m_workspace->collectParts(parts);
+    for (Part* p : parts) m_snapshot.emplace_back(sharedPart(p), p->state());
+    m_modifiedBeforeRun = m_modified;
+    m_physics.start(parts);
+    m_accumulator = 0;
+    m_run = RunState::Running;
+    log("Running (" + std::to_string(parts.size()) + " parts)");
+    runStateChanged();
+}
+
+void Editor::pause() {
+    if (m_run != RunState::Running) return;
+    m_run = RunState::Paused;
+    log("Paused");
+    runStateChanged();
+}
+
+void Editor::stop() {
+    if (m_run == RunState::Stopped) return;
+    m_run = RunState::Stopped;
+    m_physics.clear();
+    for (auto& entry : m_snapshot) entry.first->setState(entry.second);
+    m_snapshot.clear();
+    ++m_version;
+    ++m_simVersion;
+    setModified(m_modifiedBeforeRun);
+    log("Stopped - place restored");
+    runStateChanged();
+    if (m_selected) partChanged(m_selected);
+}
+
+void Editor::advance(float seconds) {
+    if (m_run != RunState::Running) return;
+    m_accumulator += std::min(seconds, 0.1f);
+    int steps = 0;
+    while (m_accumulator >= 1.0f / 60.0f && steps < 4) {
+        m_physics.step(1.0f / 60.0f);
+        m_accumulator -= 1.0f / 60.0f;
+        ++steps;
+    }
+    if (steps == 4) m_accumulator = 0;          // fell behind: drop the backlog instead of spiralling
+    if (steps > 0) {
+        ++m_simVersion;
+        if (m_selected) partChanged(m_selected);
+    }
 }

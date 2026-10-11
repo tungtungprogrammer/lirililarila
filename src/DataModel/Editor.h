@@ -4,9 +4,11 @@
 #include <string>
 #include <vector>
 #include "Signal.h"
+#include "Physics.h"
 #include "Workspace.h"
 
 enum class Tool { Select = 0, Move = 1, Resize = 2 };
+enum class RunState { Stopped = 0, Running = 1, Paused = 2 };
 enum class Lighting { Day = 0, Sunset = 1, Night = 2 };
 
 // The state of the Studio session: the place, the selection, the active tool, undo history.
@@ -62,6 +64,15 @@ public:
     // ---- camera (reported by the viewport; used to place inserted parts) ----
     void setCamera(const Vec3& position, const Vec3& look) { m_camPos = position; m_camLook = look; }
 
+    // ---- Run (physics) ----
+    RunState runState() const { return m_run; }
+    bool simulating() const { return m_run != RunState::Stopped; }   // editing is locked while true
+    void play();                       // snapshot the place and start the physics (or resume)
+    void pause();
+    void stop();                       // restore the place exactly as it was before Run
+    void advance(float seconds);       // called every frame by the renderer; steps at a fixed 1/60 s
+    unsigned long simVersion() const { return m_simVersion; }   // changes every physics step
+
     // ---- lighting (time of day) and camera reset ----
     Lighting lighting() const { return m_lighting; }
     void setLighting(Lighting l);
@@ -81,6 +92,7 @@ public:
     Signal<>                    toolChanged;
     Signal<>                    snapChanged;
     Signal<>                    lightingChanged;
+    Signal<>                    runStateChanged;
     Signal<>                    historyChanged;
     Signal<>                    titleChanged;         // file name or modified flag
     Signal<Part*>               partChanged;
@@ -111,6 +123,14 @@ private:
     unsigned long m_version = 1;
     Lighting     m_lighting = Lighting::Day;
     bool         m_cameraReset = false;
+
+    bool editBlocked();                // true (and logs) while the simulation is running
+    RunState     m_run = RunState::Stopped;
+    Physics      m_physics;
+    std::vector<std::pair<std::shared_ptr<Part>, PartState>> m_snapshot;
+    bool         m_modifiedBeforeRun = false;
+    float        m_accumulator = 0;
+    unsigned long m_simVersion = 1;
 
     std::vector<Command> m_undo, m_redo;
 
