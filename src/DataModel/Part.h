@@ -1,7 +1,7 @@
 #pragma once
 #include "BrickColor.h"
 #include "Instance.h"
-#include "Math.h"
+#include "VecMath.h"
 
 enum class SurfaceType { Smooth = 0, Studs = 1 };
 
