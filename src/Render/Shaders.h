@@ -1,6 +1,5 @@
 #pragma once
-// GLSL for the 2007-style look. All colours are authored in sRGB and converted to linear on output,
-// because G3D's film pass applies a 2.2 gamma.
+// GLSL for the 2007-style look. We draw straight into the window, so colours are written as plain sRGB.
 
 namespace shaders {
 
@@ -59,7 +58,7 @@ void main() {
         col = base * light;
     }
     col = clamp(col, 0.0, 1.0);
-    result = vec4(pow(col, vec3(2.2)), 1.0);
+    result = vec4(col, 1.0);
 }
 )GLSL";
 
@@ -117,7 +116,7 @@ void main() {
         float fade = smoothstep(0.01, 0.20, h);
         sky = mix(sky, vec3(1.0), c * 0.92 * fade);
     }
-    result = vec4(pow(clamp(sky, 0.0, 1.0), vec3(2.2)), 1.0);
+    result = vec4(clamp(sky, 0.0, 1.0), 1.0);
 }
 )GLSL";
 
