@@ -58,6 +58,8 @@ public:
         // G3D normally swaps buffers from inside its own (HDR + film) draw path, which we bypass.
         // Without this the back buffer is never presented: black / stale / garbage frames.
         setSubmitToDisplayMode(SubmitToDisplayMode::MINIMIZE_LATENCY);
+        // The Qt timer paces the frames. G3D must not drop to 4 fps when the Qt side has focus.
+        setLowerFrameRateInBackground(false);
         setCameraManipulator(shared_ptr<Manipulator>());       // we do our own camera
 
         FilmSettings& film = activeCamera()->filmSettings();
@@ -152,11 +154,15 @@ public:
         // G3D must see resize events (it reallocates its framebuffer there); everything else of its
         // default handling (F-keys, shader reload, ...) is skipped on purpose.
         if (e.type == GEventType::VIDEO_RESIZE) {
-            GApp::onEvent(e);
+            // Not forwarded to GApp::resize: that reallocates the (unused) HDR buffers on every
+            // pixel of a drag-resize, which made resizing crawl. We draw straight to the window.
             m_editor.log("Viewport resized to " + std::to_string(e.resize.w) + "x" + std::to_string(e.resize.h));
         }
         return false;
     }
+
+    // Never sleep inside G3D: it blocks the whole Qt UI. The Qt timer sets the pace.
+    void onWait(RealTime) override {}
 
     void onSimulation(RealTime rdt, SimTime sdt, SimTime idt) override {
         GApp::onSimulation(rdt, sdt, idt);
