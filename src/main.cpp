@@ -52,7 +52,8 @@ int main(int argc, char** argv) {
     QObject::connect(&frame, &QTimer::timeout, [&] {
         if (!viewport->frame()) QApplication::quit();
     });
-    frame.start(8);
+    frame.setTimerType(Qt::PreciseTimer);
+    frame.start(15);
 
     QObject::connect(&app, &QApplication::aboutToQuit, [&] { frame.stop(); viewport->shutdown(); });
     const int rc = app.exec();
