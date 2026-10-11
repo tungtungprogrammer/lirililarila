@@ -1,16 +1,39 @@
 #pragma once
-#include <G3D/G3DAll.h>
+#include "BrickColor.h"
 #include "Instance.h"
+#include "Math.h"
+
+enum class SurfaceType { Smooth = 0, Studs = 1 };
+
+// Everything about a Part that can be edited, used for undo/redo, copy/paste and save/load.
+struct PartState {
+    std::string name = "Part";
+    Vec3  position;
+    Mat3  orientation;
+    Vec3  size = Vec3(4, 1.2f, 2);
+    int   brickColor = kBrickMediumStoneGrey;
+    bool  anchored = true;
+    SurfaceType topSurface = SurfaceType::Studs;
+
+    bool operator==(const PartState& o) const {
+        return name == o.name && position == o.position && orientation == o.orientation && size == o.size &&
+               brickColor == o.brickColor && anchored == o.anchored && topSurface == o.topSurface;
+    }
+    bool operator!=(const PartState& o) const { return !(*this == o); }
+};
 
 class Part : public Instance {
 public:
-    CFrame  cframe;
-    Vector3 size     = Vector3(4, 1.2f, 2);        // classic brick
-    Color3  color    = Color3(0.64f, 0.64f, 0.64f);
-    bool    anchored = true;
+    Vec3  position;
+    Mat3  orientation;
+    Vec3  size = Vec3(4, 1.2f, 2);
+    int   brickColor = kBrickMediumStoneGrey;
+    bool  anchored = true;
+    SurfaceType topSurface = SurfaceType::Studs;
 
     Part() { name = "Part"; }
     std::string className() const override { return "Part"; }
 
-    Box box() const { return cframe.toWorldSpace(AABox(-size / 2.0f, size / 2.0f)); }
+    PartState state() const;
+    void setState(const PartState& s);
 };

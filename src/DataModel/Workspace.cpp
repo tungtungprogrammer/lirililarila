@@ -1,12 +1,8 @@
 #include "Workspace.h"
 
-std::shared_ptr<Part> Workspace::createPart(const std::string& partName, const Point3& pos,
-                                            const Vector3& size, const Color3& color) {
+std::shared_ptr<Part> Workspace::createPart(const PartState& state) {
     auto p = std::make_shared<Part>();
-    p->name = partName;
-    p->cframe = CFrame(pos);
-    p->size = size;
-    p->color = color;
+    p->setState(state);
     addChild(p);
     return p;
 }
@@ -19,15 +15,3 @@ static void collect(const Instance* node, std::vector<Part*>& out) {
 }
 
 void Workspace::collectParts(std::vector<Part*>& out) const { collect(this, out); }
-
-Part* Workspace::pick(const Ray& ray) const {
-    std::vector<Part*> parts;
-    collectParts(parts);
-    Part* best = nullptr;
-    float bestT = finf();
-    for (Part* p : parts) {
-        float t = ray.intersectionTime(p->box());
-        if (t < bestT) { bestT = t; best = p; }
-    }
-    return best;
-}
