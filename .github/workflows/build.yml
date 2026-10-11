@@ -27,6 +27,15 @@ jobs:
         with:
           arch: x64
 
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.5.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          cache: true
+
       # G3D's pre-build events call bin\CopyIfNewer.exe, an old prebuilt binary that crashes on
       # current Windows with 0xC0000135 (missing DLL). Replace every call with a small Python shim
       # that uses G3D's own bin/ice/copyifnewer.py.
@@ -133,7 +142,9 @@ jobs:
                   Where-Object { $_.Name -notmatch 'DEBUG|CHECKED|fmodL' -and $_.Name -notmatch 'd\.lib$' } |
                   ForEach-Object { $_.FullName -replace '\\','/' }
           $libs += @('opengl32','glu32','gdi32','winmm','ws2_32','user32','shell32','ole32','advapi32','comdlg32','iphlpapi')
+          $qt = $env:QT_ROOT_DIR -replace '\\','/'
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+            "-DCMAKE_PREFIX_PATH=$qt" `
             "-DG3D_INCLUDE_DIRS=$ws/G3D/build/include" `
             "-DG3D_LIBRARIES=$($libs -join ';')"
 
@@ -146,7 +157,8 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item build/Release/Studio.exe dist/
           Copy-Item G3D/build/bin/*.dll dist/ -ErrorAction SilentlyContinue
-          Copy-Item G3D/data-files dist/data-files -Recurse
+          Copy-Item G3D/data-files dist/data -Recurse   # G3D looks in "data" next to the exe, not "data-files"
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw dist/Studio.exe
 
       - uses: actions/upload-artifact@v4
         with:
