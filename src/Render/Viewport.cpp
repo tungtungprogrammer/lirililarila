@@ -55,6 +55,9 @@ public:
     void onInit() override {
         GApp::onInit();
         showRenderingStats = false;
+        // G3D normally swaps buffers from inside its own (HDR + film) draw path, which we bypass.
+        // Without this the back buffer is never presented: black / stale / garbage frames.
+        setSubmitToDisplayMode(SubmitToDisplayMode::MINIMIZE_LATENCY);
         setCameraManipulator(shared_ptr<Manipulator>());       // we do our own camera
 
         FilmSettings& film = activeCamera()->filmSettings();
@@ -280,7 +283,7 @@ private:
 
 class ViewportImpl : public IViewport {
 public:
-    ViewportImpl(Editor& editor, const char* caption, int w, int h) : m_caption(caption) {
+    ViewportImpl(Editor& editor, const char* caption, int w, int h) : m_editor(editor), m_caption(caption) {
         GApp::Settings settings;
         settings.window.caption = caption;
         settings.window.width = w;
@@ -292,7 +295,12 @@ public:
         m_app->start();
     }
 
-    bool frame() override { return m_app->step(); }
+    bool frame() override {
+        try { return m_app->step(); }
+        catch (const std::exception& e) { m_editor.log(std::string("Renderer error: ") + e.what()); }
+        catch (...) { m_editor.log("Renderer error (unknown)"); }
+        return true;
+    }
 
     void* nativeHandle() override {
 #ifdef _WIN32
@@ -309,6 +317,7 @@ public:
     ~ViewportImpl() override { shutdown(); }
 
 private:
+    Editor&                    m_editor;
     std::string                m_caption;
     std::unique_ptr<StudioApp> m_app;
 };
