@@ -5,7 +5,7 @@
 // All icons are drawn in code (16x16 logical pixels) so the project needs no image files.
 namespace Icons {
 
-enum Id { New, Open, Save, Cut, Copy, Paste, Undo, Redo, Select, Move, Resize, Delete, Workspace, Brick, About };
+enum Id { New, Open, Save, Cut, Copy, Paste, Undo, Redo, Select, Move, Resize, Delete, Workspace, Brick, About, Run, Pause, Stop };
 
 QIcon icon(Id id);
 QIcon partIcon(int brickColorId);                 // little cube tinted with the BrickColor

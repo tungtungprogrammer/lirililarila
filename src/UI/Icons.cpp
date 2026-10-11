@@ -153,6 +153,21 @@ QIcon icon(Id id) {
         });
     case Brick:
         return makeIcon([](QPainter& p) { drawCube(p, c3(163, 162, 165)); });
+    case Run:
+        return makeIcon([](QPainter& p) {
+            p.setPen(QPen(c3(20, 90, 20), 0.9)); p.setBrush(c3(60, 190, 60));
+            p.drawPolygon(QPolygonF({QPointF(4, 2.5), QPointF(13, 8), QPointF(4, 13.5)}));
+        });
+    case Pause:
+        return makeIcon([](QPainter& p) {
+            p.setPen(QPen(c3(40, 60, 110), 0.9)); p.setBrush(c3(90, 130, 220));
+            p.drawRect(QRectF(3.5, 2.5, 3.2, 11)); p.drawRect(QRectF(9.3, 2.5, 3.2, 11));
+        });
+    case Stop:
+        return makeIcon([](QPainter& p) {
+            p.setPen(QPen(c3(110, 20, 20), 0.9)); p.setBrush(c3(215, 55, 55));
+            p.drawRect(QRectF(3.5, 3.5, 9, 9));
+        });
     case About:
         return makeIcon([](QPainter& p) {
             p.setPen(QPen(c3(20, 60, 120), 0.9)); p.setBrush(c3(60, 120, 210));

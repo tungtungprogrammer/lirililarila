@@ -47,6 +47,7 @@ private:
     QAction *aRotate, *aTilt;
     QAction *aInsertBrick, *aInsertPlate, *aInsertCube;
     QAction *aAbout, *aControls;
+    QAction *aRun, *aPause, *aStop;
     QAction *aAnchor, *aLock, *aResetCamera, *aFocus;
     QActionGroup* m_lightGroup = nullptr;
     QLabel* m_info = nullptr;
