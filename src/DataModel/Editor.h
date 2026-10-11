@@ -7,6 +7,7 @@
 #include "Workspace.h"
 
 enum class Tool { Select = 0, Move = 1, Resize = 2 };
+enum class Lighting { Day = 0, Sunset = 1, Night = 2 };
 
 // The state of the Studio session: the place, the selection, the active tool, undo history.
 // Free of Qt and G3D so both the UI and the renderer can share it.
@@ -32,7 +33,10 @@ public:
     void setSnap(float s);
 
     // ---- undoable edits ----
-    Part* insertPart(const std::string& name, const Vec3& size, int brickColor);   // in front of the camera
+    Part* insertPart(const std::string& name, const Vec3& size, int brickColor, PartShape shape = PartShape::Block);   // in front of the camera
+    void toggleAnchorSelected();
+    void toggleLockSelected();
+    void colorSelected(int brickColor);
     void deleteSelected();
     void duplicateSelected();
     void copySelected();
@@ -58,6 +62,13 @@ public:
     // ---- camera (reported by the viewport; used to place inserted parts) ----
     void setCamera(const Vec3& position, const Vec3& look) { m_camPos = position; m_camLook = look; }
 
+    // ---- lighting (time of day) and camera reset ----
+    Lighting lighting() const { return m_lighting; }
+    void setLighting(Lighting l);
+    void requestCameraReset() { m_cameraReset = true; }
+    bool takeCameraReset() { const bool r = m_cameraReset; m_cameraReset = false; return r; }
+    int partCount() const;
+
     // ---- output window ----
     void log(const std::string& line);
 
@@ -69,6 +80,7 @@ public:
     Signal<>                    treeChanged;          // parts added / removed / renamed / place replaced
     Signal<>                    toolChanged;
     Signal<>                    snapChanged;
+    Signal<>                    lightingChanged;
     Signal<>                    historyChanged;
     Signal<>                    titleChanged;         // file name or modified flag
     Signal<Part*>               partChanged;
@@ -97,6 +109,8 @@ private:
     Tool         m_tool = Tool::Select;
     float        m_snap = 1.0f;
     unsigned long m_version = 1;
+    Lighting     m_lighting = Lighting::Day;
+    bool         m_cameraReset = false;
 
     std::vector<Command> m_undo, m_redo;
 

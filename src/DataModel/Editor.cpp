@@ -34,11 +34,13 @@ void Editor::resetPlace(const std::shared_ptr<Workspace>& ws, const std::string&
     m_dragging = false;
     m_filePath = filePath;
     m_modified = false;
+    m_lighting = Lighting::Day;
     ++m_version;
     treeChanged();
     selectionChanged();
     historyChanged();
     titleChanged();
+    lightingChanged();
 }
 
 void Editor::setFilePath(const std::string& p) { m_filePath = p; titleChanged(); }
@@ -119,7 +121,7 @@ void Editor::record(Command c) {
 
 // ---------------------------------------------------------------- edits
 
-Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickColor) {
+Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickColor, PartShape shape) {
     // Aim at the ground in front of the camera, falling back to a point in the air.
     Vec3 pos = m_camPos + m_camLook * 14.0f;
     if (m_camLook.y < -0.05f) {
@@ -134,6 +136,7 @@ Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickCol
     s.position = pos;
     s.size = size;
     s.brickColor = brickColor;
+    s.shape = shape;
 
     auto part = std::make_shared<Part>();
     part->setState(s);
@@ -278,3 +281,37 @@ void Editor::redo() {
 }
 
 void Editor::log(const std::string& line) { output(line); }
+
+void Editor::toggleAnchorSelected() {
+    if (!m_selected) return;
+    PartState s = m_selected->state();
+    s.anchored = !s.anchored;
+    setPartState(m_selected, s, std::string(s.anchored ? "Anchor " : "Unanchor ") + s.name);
+}
+
+void Editor::toggleLockSelected() {
+    if (!m_selected) return;
+    PartState s = m_selected->state();
+    s.locked = !s.locked;
+    setPartState(m_selected, s, std::string(s.locked ? "Lock " : "Unlock ") + s.name);
+}
+
+void Editor::colorSelected(int brickColor) {
+    if (!m_selected) return;
+    PartState s = m_selected->state();
+    s.brickColor = brickColor;
+    setPartState(m_selected, s, "Recolor " + s.name);
+}
+
+void Editor::setLighting(Lighting l) {
+    if (m_lighting == l) return;
+    m_lighting = l;
+    touch();
+    lightingChanged();
+}
+
+int Editor::partCount() const {
+    std::vector<Part*> parts;
+    m_workspace->collectParts(parts);
+    return int(parts.size());
+}
