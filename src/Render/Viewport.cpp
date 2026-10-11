@@ -167,6 +167,15 @@ public:
         float vp[16];
         m_camera.viewProjection(w / h, vp);
 
+        // We draw straight into the window (no HDR/film pass), so pin the target state to the real
+        // window size every frame; G3D's own viewport can lag behind after the window was re-parented.
+        rd->setFramebuffer(shared_ptr<Framebuffer>());
+        rd->setSRGBConversion(false);
+        rd->setClip2D(Rect2D::inf());
+        rd->setViewport(Rect2D::xywh(0.0f, 0.0f, w, h));
+        glViewport(0, 0, int(w), int(h));
+        glDisable(GL_SCISSOR_TEST);
+
         if (m_meshVersion != m_editor.version()) rebuildScene();
 
         rd->setColorClearValue(Color3(0.7f, 0.85f, 0.98f));
