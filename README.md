@@ -1,22 +1,18 @@
-# OldBlox Studio (starter)
+# OldBlox Studio
 
-Mini Roblox-2007-style Studio on G3D Innovation Engine 10.
+A tribute to the 2007-era Roblox Studio: a Qt "Luna"-style editor around a G3D viewport.
+
+* Viewport: studded bricks, sun lighting, sky with clouds, blue selection box, Move/Resize handles.
+* UI: menus, toolbars, Toolbox, Explorer, Properties, Output (Qt 6, classic style).
+
+## Controls (viewport)
+Right-drag look - W/A/S/D move, Q/E down/up, Shift faster, wheel zoom, F focus selection.
+Click select - 1/2/3 Select/Move/Resize - Delete, Ctrl+Z/Y/C/X/V/D - Ctrl+R rotate 90 (Y), Ctrl+T tilt 90 (Z).
+Tools > Grid Snap changes the snap step. Files save as `.obxl`.
+
+## Build
+Push to GitHub: `.github/workflows/build.yml` builds G3D and Studio and uploads `OldBloxStudio-windows`.
+Run `Studio.exe` from that folder (it must sit next to `data/`). `--floating-viewport` keeps the 3D view as its own window.
 
 ## Layout
-- src/main.cpp            entry point
-- src/Studio.*            GApp: camera, input, rendering
-- src/DataModel/Instance  base tree node (Name, Parent, Children)
-- src/DataModel/Part      brick (CFrame, Size, Color, Anchored)
-- src/DataModel/Workspace container + ray picking
-
-## Controls
-Left click = select, P = insert part, Delete = remove, camera = G3D default (right mouse + WASD)
-
-## Build (MinGW-w64)
-    mkdir build && cd build
-    cmake -G "MinGW Makefiles" .. ^
-      -DG3D_INCLUDE_DIRS="C:/G3D/G3D-base.lib/include;C:/G3D/G3D-gfx.lib/include;C:/G3D/G3D-app.lib/include;C:/G3D/external/glfw.lib/include;..." ^
-      -DG3D_LIBRARIES="C:/G3D/build/lib/libG3D-app.a;...;opengl32;gdi32;winmm;ws2_32"
-    mingw32-make
-
-Note: G3D 10 officially targets MSVC on Windows. Getting it to build with MinGW may need patches.
+`src/DataModel` (plain C++ model + editor), `src/Render` (G3D, C++14), `src/UI` (Qt, C++17), `src/main.cpp`.
