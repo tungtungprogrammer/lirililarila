@@ -146,7 +146,12 @@ public:
             m_camera.position = m_camera.position + m_camera.forward() * (float(e.scroll2d.dy) * 2.0f);
             return true;
         }
-        // Do not let G3D's default handling (F-keys, escape-to-quit, ...) run.
+        // G3D must see resize events (it reallocates its framebuffer there); everything else of its
+        // default handling (F-keys, shader reload, ...) is skipped on purpose.
+        if (e.type == GEventType::VIDEO_RESIZE) {
+            GApp::onEvent(e);
+            m_editor.log("Viewport resized to " + std::to_string(e.resize.w) + "x" + std::to_string(e.resize.h));
+        }
         return false;
     }
 
