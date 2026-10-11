@@ -2,7 +2,7 @@
 // Small vector helpers on top of the data-model math types (no G3D, no Qt).
 #include <algorithm>
 #include <cmath>
-#include "DataModel/Math.h"
+#include "DataModel/VecMath.h"
 
 namespace geom {
 
