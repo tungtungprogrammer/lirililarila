@@ -8,7 +8,7 @@ class ToolboxPanel : public QListWidget {
 public:
     ToolboxPanel(Editor& editor, QWidget* parent = nullptr);
 
-    struct Preset { const char* label; const char* tip; Vec3 size; };
+    struct Preset { const char* label; const char* tip; Vec3 size; PartShape shape; };
     static const std::vector<Preset>& presets();
     void insert(int index);
 

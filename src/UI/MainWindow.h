@@ -33,6 +33,7 @@ private:
     bool fileSaveAs();
     bool saveTo(const QString& path);
     void about();
+    void controls();
 
     Editor&          m_editor;
     ViewportWidget*  m_viewport = nullptr;
@@ -45,7 +46,10 @@ private:
     QAction *aSelect, *aMove, *aResize;
     QAction *aRotate, *aTilt;
     QAction *aInsertBrick, *aInsertPlate, *aInsertCube;
-    QAction *aAbout;
+    QAction *aAbout, *aControls;
+    QAction *aAnchor, *aLock, *aResetCamera, *aFocus;
+    QActionGroup* m_lightGroup = nullptr;
+    QLabel* m_info = nullptr;
     QActionGroup* m_toolGroup = nullptr;
     QActionGroup* m_snapGroup = nullptr;
     std::vector<QAction*> m_dockToggles;

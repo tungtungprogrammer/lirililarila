@@ -33,4 +33,7 @@ private:
     QComboBox* m_color = nullptr;
     QComboBox* m_topSurface = nullptr;
     QComboBox* m_anchored = nullptr;
+    QComboBox* m_shape = nullptr;
+    QComboBox* m_locked = nullptr;
+    QLineEdit* m_transparency = nullptr;
 };

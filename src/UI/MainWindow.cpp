@@ -32,6 +32,8 @@ MainWindow::MainWindow(Editor& editor, QWidget* parent) : QMainWindow(parent), m
 
     m_status = new QLabel("Ready", this);
     statusBar()->addWidget(m_status, 1);
+    m_info = new QLabel(this);
+    statusBar()->addPermanentWidget(m_info);
     statusBar()->setSizeGripEnabled(true);
 
     m_editor.titleChanged.connect([this] { refreshTitle(); });
@@ -39,6 +41,9 @@ MainWindow::MainWindow(Editor& editor, QWidget* parent) : QMainWindow(parent), m
     m_editor.selectionChanged.connect([this] { refreshActions(); });
     m_editor.toolChanged.connect([this] { refreshActions(); });
     m_editor.snapChanged.connect([this] { refreshActions(); });
+    m_editor.lightingChanged.connect([this] { refreshActions(); });
+    m_editor.treeChanged.connect([this] { refreshActions(); });
+    m_editor.partChanged.connect([this](Part*) { refreshActions(); });
     m_editor.output.connect([this](const std::string& s) {
         m_output->appendPlainText(QString::fromStdString(s));
     });
@@ -83,6 +88,10 @@ void MainWindow::buildActions() {
     aInsertBrick = mk("&Brick", Icons::Brick, QKeySequence());
     aInsertPlate = mk("&Plate", Icons::Brick, QKeySequence(), false);
     aInsertCube = mk("&Cube", Icons::Brick, QKeySequence(), false);
+    aAnchor = mk("&Anchor / Unanchor", Icons::Move, QKeySequence(Qt::CTRL | Qt::Key_B), false);
+    aLock = mk("&Lock / Unlock", Icons::Move, QKeySequence(Qt::CTRL | Qt::Key_L), false);
+    aResetCamera = mk("&Reset Camera", Icons::Select, QKeySequence(Qt::CTRL | Qt::Key_Home), false);
+    aControls = mk("&Controls", Icons::About, QKeySequence(Qt::Key_F1), false);
     aAbout = mk("&About OldBlox Studio", Icons::About, QKeySequence(), false);
 
     connect(aNew, &QAction::triggered, this, &MainWindow::fileNew);
@@ -105,6 +114,10 @@ void MainWindow::buildActions() {
     connect(aInsertBrick, &QAction::triggered, this, [this] { m_toolbox->insert(0); });
     connect(aInsertPlate, &QAction::triggered, this, [this] { m_toolbox->insert(1); });
     connect(aInsertCube, &QAction::triggered, this, [this] { m_toolbox->insert(2); });
+    connect(aAnchor, &QAction::triggered, this, [this] { m_editor.toggleAnchorSelected(); });
+    connect(aLock, &QAction::triggered, this, [this] { m_editor.toggleLockSelected(); });
+    connect(aResetCamera, &QAction::triggered, this, [this] { m_editor.requestCameraReset(); });
+    connect(aControls, &QAction::triggered, this, &MainWindow::controls);
     connect(aAbout, &QAction::triggered, this, &MainWindow::about);
 }
 
@@ -160,15 +173,45 @@ void MainWindow::buildMenus() {
 
     QMenu* view = menuBar()->addMenu("&View");
     for (QAction* a : m_dockToggles) view->addAction(a);
+    view->addSeparator();
+    view->addAction(aResetCamera);
+    QMenu* light = view->addMenu("&Lighting (Time of Day)");
+    m_lightGroup = new QActionGroup(this);
+    int li = 0;
+    for (const char* name : {"&Day", "&Sunset", "&Night"}) {
+        QAction* a = light->addAction(name);
+        a->setCheckable(true);
+        a->setData(li);
+        m_lightGroup->addAction(a);
+        const Lighting l = static_cast<Lighting>(li++);
+        connect(a, &QAction::triggered, this, [this, l] { m_editor.setLighting(l); });
+    }
 
     QMenu* insert = menuBar()->addMenu("&Insert");
     insert->addAction(aInsertBrick);
     insert->addAction(aInsertPlate);
     insert->addAction(aInsertCube);
+    insert->addSeparator();
+    for (std::size_t i = 3; i < ToolboxPanel::presets().size(); ++i) {
+        const ToolboxPanel::Preset& pr = ToolboxPanel::presets()[i];
+        QAction* a = insert->addAction(QString::fromLatin1(pr.label));
+        a->setToolTip(QString::fromLatin1(pr.tip));
+        connect(a, &QAction::triggered, this, [this, i] { m_toolbox->insert(static_cast<int>(i)); });
+    }
 
     QMenu* format = menuBar()->addMenu("F&ormat");
     format->addAction(aRotate);
     format->addAction(aTilt);
+    format->addSeparator();
+    format->addAction(aAnchor);
+    format->addAction(aLock);
+    format->addSeparator();
+    QMenu* paint = format->addMenu("&Color");
+    for (const BrickColorInfo& c : brickColors()) {
+        QAction* a = paint->addAction(QIcon(Icons::swatch(c.id)), QString::fromLatin1(c.name));
+        const int id = c.id;
+        connect(a, &QAction::triggered, this, [this, id] { m_editor.colorSelected(id); });
+    }
 
     QMenu* tools = menuBar()->addMenu("&Tools");
     tools->addAction(aSelect);
@@ -188,6 +231,8 @@ void MainWindow::buildMenus() {
     }
 
     QMenu* help = menuBar()->addMenu("&Help");
+    help->addAction(aControls);
+    help->addSeparator();
     help->addAction(aAbout);
 }
 
@@ -216,7 +261,7 @@ void MainWindow::refreshActions() {
     aRedo->setEnabled(m_editor.canRedo());
     aUndo->setText(m_editor.canUndo() ? QString("&Undo %1").arg(QString::fromStdString(m_editor.undoText())) : "&Undo");
     aRedo->setText(m_editor.canRedo() ? QString("&Redo %1").arg(QString::fromStdString(m_editor.redoText())) : "&Redo");
-    for (QAction* a : {aCut, aCopy, aDelete, aDuplicate, aRotate, aTilt}) a->setEnabled(hasSel);
+    for (QAction* a : {aCut, aCopy, aDelete, aDuplicate, aRotate, aTilt, aAnchor, aLock}) a->setEnabled(hasSel);
     aPaste->setEnabled(m_editor.hasClipboard());
 
     aSelect->setChecked(m_editor.tool() == Tool::Select);
@@ -226,10 +271,24 @@ void MainWindow::refreshActions() {
     for (QAction* a : m_snapGroup->actions())
         a->setChecked(qFuzzyCompare(a->data().toFloat() + 1.f, m_editor.snap() + 1.f));
 
-    if (Part* p = m_editor.selected())
-        m_status->setText(QString("%1 selected").arg(QString::fromStdString(p->name)));
-    else
+    for (QAction* a : m_lightGroup->actions()) a->setChecked(a->data().toInt() == static_cast<int>(m_editor.lighting()));
+
+    static const char* kShapeNames[] = {"Block", "Ball", "Cylinder", "Wedge"};
+    static const char* kToolNames[] = {"Select", "Move", "Resize"};
+    if (Part* p = m_editor.selected()) {
+        m_status->setText(QString("%1 (%2)  size %3 x %4 x %5%6%7")
+                              .arg(QString::fromStdString(p->name), kShapeNames[static_cast<int>(p->shape)])
+                              .arg(static_cast<double>(p->size.x), 0, 'g', 4).arg(static_cast<double>(p->size.y), 0, 'g', 4)
+                              .arg(static_cast<double>(p->size.z), 0, 'g', 4)
+                              .arg(p->anchored ? "  [anchored]" : "", p->locked ? "  [locked]" : ""));
+    } else {
         m_status->setText("Ready");
+    }
+    if (m_info)
+        m_info->setText(QString("%1 parts   Tool: %2   Snap: %3")
+                            .arg(m_editor.partCount())
+                            .arg(kToolNames[static_cast<int>(m_editor.tool())])
+                            .arg(m_editor.snap() > 0 ? QString::number(static_cast<double>(m_editor.snap())) + " stud" : QString("off")));
 }
 
 void MainWindow::refreshTitle() {
@@ -279,6 +338,17 @@ bool MainWindow::fileSaveAs() {
     if (path.isEmpty()) return false;
     if (QFileInfo(path).suffix().isEmpty()) path += ".obxl";
     return saveTo(path);
+}
+
+void MainWindow::controls() {
+    QMessageBox::information(this, "Controls",
+        "<b>Camera</b><br>Right mouse drag: look &nbsp; W A S D: fly &nbsp; Q / E: down / up<br>"
+        "Shift: fly faster &nbsp; Mouse wheel: zoom &nbsp; F: focus selection<br><br>"
+        "<b>Tools</b><br>1 Select &nbsp; 2 Move &nbsp; 3 Resize<br>"
+        "Drag a part in Select mode to slide it; drag the arrows in Move / Resize mode.<br><br>"
+        "<b>Editing</b><br>Ctrl+Z / Y undo, redo &nbsp; Ctrl+C / X / V &nbsp; Ctrl+D duplicate<br>"
+        "Ctrl+R rotate &nbsp; Ctrl+T tilt &nbsp; Ctrl+B anchor &nbsp; Ctrl+L lock &nbsp; Del delete<br>"
+        "Locked parts cannot be clicked in the 3D view (select them in the Explorer).");
 }
 
 void MainWindow::about() {

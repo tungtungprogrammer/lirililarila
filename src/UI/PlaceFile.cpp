@@ -28,6 +28,7 @@ bool save(const Editor& editor, const QString& path, QString* error) {
     w.writeStartElement("OldBloxPlace");
     w.writeAttribute("version", "1");
     w.writeStartElement("Workspace");
+    w.writeAttribute("lighting", QString::number(static_cast<int>(editor.lighting())));
 
     std::vector<Part*> parts;
     editor.workspace()->collectParts(parts);
@@ -44,6 +45,9 @@ bool save(const Editor& editor, const QString& path, QString* error) {
         w.writeAttribute("size", vecAttr(p->size));
         w.writeAttribute("anchored", p->anchored ? "true" : "false");
         w.writeAttribute("topSurface", p->topSurface == SurfaceType::Studs ? "Studs" : "Smooth");
+        w.writeAttribute("shape", QString::number(static_cast<int>(p->shape)));
+        w.writeAttribute("transparency", QString::number(static_cast<double>(p->transparency), 'g', 3));
+        w.writeAttribute("locked", p->locked ? "true" : "false");
         w.writeEndElement();
     }
     w.writeEndElement();   // Workspace
@@ -62,10 +66,15 @@ bool load(Editor& editor, const QString& path, QString* error) {
     QXmlStreamReader r(&f);
     auto ws = std::make_shared<Workspace>();
     bool sawRoot = false;
+    int lighting = 0;
     while (!r.atEnd()) {
         r.readNext();
         if (!r.isStartElement()) { continue; }
         if (r.name() == QLatin1String("OldBloxPlace")) { sawRoot = true; continue; }
+        if (r.name() == QLatin1String("Workspace")) {
+            lighting = std::max(0, std::min(2, r.attributes().value("lighting").toInt()));
+            continue;
+        }
         if (r.name() != QLatin1String("Part")) { continue; }
 
         PartState s;
@@ -81,6 +90,9 @@ bool load(Editor& editor, const QString& path, QString* error) {
         }
         s.anchored = a.value("anchored") != QLatin1String("false");
         s.topSurface = (a.value("topSurface") == QLatin1String("Smooth")) ? SurfaceType::Smooth : SurfaceType::Studs;
+        s.shape = static_cast<PartShape>(std::max(0, std::min(3, a.value("shape").toInt())));
+        s.transparency = std::max(0.0f, std::min(1.0f, a.value("transparency").toFloat()));
+        s.locked = a.value("locked") == QLatin1String("true");
         ws->createPart(s);
     }
     if (r.hasError() || !sawRoot) {
@@ -88,6 +100,8 @@ bool load(Editor& editor, const QString& path, QString* error) {
         return false;
     }
     editor.resetPlace(ws, path.toStdString());
+    editor.setLighting(static_cast<Lighting>(lighting));
+    editor.setModified(false);
     return true;
 }
 

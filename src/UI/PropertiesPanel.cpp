@@ -82,7 +82,8 @@ void PropertiesPanel::rebuild() {
     m_busy = true;
     clear();
     m_class = m_name = m_position = m_rotation = m_size = nullptr;
-    m_color = m_topSurface = m_anchored = nullptr;
+    m_color = m_topSurface = m_anchored = m_shape = m_locked = nullptr;
+    m_transparency = nullptr;
     m_part = m_editor.selected();
 
     if (m_part) {
@@ -96,6 +97,13 @@ void PropertiesPanel::rebuild() {
         m_topSurface->addItem("Studs", static_cast<int>(SurfaceType::Studs));
         m_topSurface->addItem("Smooth", static_cast<int>(SurfaceType::Smooth));
         addRow(appearance, tr("TopSurface"), m_topSurface);
+        m_shape = new QComboBox;
+        m_shape->addItem("Block", static_cast<int>(PartShape::Block));
+        m_shape->addItem("Ball", static_cast<int>(PartShape::Ball));
+        m_shape->addItem("Cylinder", static_cast<int>(PartShape::Cylinder));
+        m_shape->addItem("Wedge", static_cast<int>(PartShape::Wedge));
+        addRow(appearance, tr("Shape"), m_shape);
+        m_transparency = addTextRow(appearance, tr("Transparency"));
 
         QTreeWidgetItem* data = addCategory(tr("Data"));
         m_class = addTextRow(data, tr("ClassName"), true);
@@ -106,6 +114,10 @@ void PropertiesPanel::rebuild() {
         m_anchored->addItem("true", true);
         m_anchored->addItem("false", false);
         addRow(behavior, tr("Anchored"), m_anchored);
+        m_locked = new QComboBox;
+        m_locked->addItem("false", false);
+        m_locked->addItem("true", true);
+        addRow(behavior, tr("Locked"), m_locked);
 
         QTreeWidgetItem* part = addCategory(tr("Part"));
         m_position = addTextRow(part, tr("Position"));
@@ -139,6 +151,21 @@ void PropertiesPanel::rebuild() {
             const SurfaceType sf = static_cast<SurfaceType>(m_topSurface->itemData(i).toInt());
             commit([&](PartState& s) { s.topSurface = sf; }, tr("Change TopSurface of"));
         });
+        connect(m_shape, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
+            const PartShape sh = static_cast<PartShape>(m_shape->itemData(i).toInt());
+            commit([&](PartState& s) { s.shape = sh; }, tr("Change Shape of"));
+        });
+        connect(m_locked, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
+            const bool l = m_locked->itemData(i).toBool();
+            commit([&](PartState& s) { s.locked = l; }, l ? tr("Lock") : tr("Unlock"));
+        });
+        connect(m_transparency, &QLineEdit::editingFinished, this, [this]() {
+            bool ok = false;
+            float t = m_transparency->text().toFloat(&ok);
+            if (!ok) { m_editor.log("Transparency needs a number from 0 to 1"); refreshValues(); return; }
+            t = std::floor(std::max(0.0f, std::min(1.0f, t)) * 10.0f + 0.5f) / 10.0f;   // tenths
+            commit([&](PartState& s) { s.transparency = t; }, tr("Change Transparency of"));
+        });
         connect(m_anchored, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
             const bool a = m_anchored->itemData(i).toBool();
             commit([&](PartState& s) { s.anchored = a; }, tr("Anchor"));
@@ -168,5 +195,8 @@ void PropertiesPanel::refreshValues() {
     if (m_color) { m_color->setCurrentIndex(std::max(0, m_color->findData(s.brickColor))); }
     if (m_topSurface) { m_topSurface->setCurrentIndex(std::max(0, m_topSurface->findData(static_cast<int>(s.topSurface)))); }
     if (m_anchored) { m_anchored->setCurrentIndex(s.anchored ? 0 : 1); }
+    if (m_locked) { m_locked->setCurrentIndex(s.locked ? 1 : 0); }
+    if (m_shape) { m_shape->setCurrentIndex(std::max(0, m_shape->findData(static_cast<int>(s.shape)))); }
+    setText(m_transparency, num(s.transparency));
     m_busy = wasBusy;
 }
