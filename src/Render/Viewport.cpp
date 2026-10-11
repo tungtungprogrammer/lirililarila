@@ -169,7 +169,7 @@ public:
 
         // We draw straight into the window (no HDR/film pass), so pin the target state to the real
         // window size every frame; G3D's own viewport can lag behind after the window was re-parented.
-        rd->setFramebuffer(shared_ptr<Framebuffer>());
+        rd->setFramebuffer(window()->framebuffer());
         rd->setSRGBConversion(false);
         rd->setClip2D(Rect2D::inf());
         rd->setViewport(Rect2D::xywh(0.0f, 0.0f, w, h));
