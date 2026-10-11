@@ -25,6 +25,10 @@ void main() {
 
 static const char* kSceneFragment = R"GLSL(#version 330
 uniform float uFlat;
+uniform vec3  uSunDir;
+uniform vec3  uTint;
+uniform float uAmbient;
+uniform float uSunPower;
 in vec3 vNormal;
 in vec3 vColor;
 in vec3 vAux;
@@ -32,20 +36,23 @@ out vec4 result;
 void main() {
     vec3 base = vColor;
     vec3 col;
+    float tenths = floor(vAux.z * 0.5 + 0.001);
+    float alpha = 1.0 - tenths * 0.1;
+    bool paintStuds = mod(vAux.z, 2.0) > 0.5;
     if (uFlat > 0.5) {
         col = base;
     } else {
         vec3 n = normalize(vNormal);
         // Flat 2007 lighting: a high sun, a soft fill from the opposite side, and a bright ambient floor.
-        vec3 sun  = normalize(vec3(-0.35, 0.85, 0.40));
+        vec3 sun  = normalize(uSunDir);
         vec3 fill = normalize(vec3(0.60, 0.15, -0.50));
         float d = max(dot(n, sun), 0.0);
         float f = max(dot(n, fill), 0.0);
         float down = max(-n.y, 0.0);                 // undersides are the darkest
-        float light = 0.46 + 0.62 * d + 0.18 * f - 0.18 * down;
+        float light = uAmbient + uSunPower * d + 0.18 * f - 0.18 * down;
 
         // Huge studded parts (the baseplate) get their studs painted on.
-        if (vAux.z > 0.5 && n.y > 0.9) {
+        if (paintStuds && n.y > 0.9) {
             vec2 cell = fract(vAux.xy) - 0.5;
             float r = length(cell);
             if (r < 0.30) {
@@ -55,10 +62,10 @@ void main() {
                 light *= 0.86;                       // contact shadow around the stud
             }
         }
-        col = base * light;
+        col = base * light * uTint;
     }
     col = clamp(col, 0.0, 1.0);
-    result = vec4(col, 1.0);
+    result = vec4(col, alpha);
 }
 )GLSL";
 
@@ -76,6 +83,12 @@ uniform vec3 uFwd;
 uniform vec3 uRight;
 uniform vec3 uUp;
 uniform vec2 uTan;
+uniform vec3 uSkyTop;
+uniform vec3 uSkyHorizon;
+uniform vec3 uSunDirSky;
+uniform vec3 uSunColor;
+uniform float uStars;
+uniform float uCloudLight;
 in vec2 vNdc;
 out vec4 result;
 
@@ -98,15 +111,15 @@ void main() {
     vec3 dir = normalize(uFwd + uRight * (vNdc.x * uTan.x) + uUp * (vNdc.y * uTan.y));
     float h = clamp(dir.y, -1.0, 1.0);
 
-    vec3 zenith  = vec3(0.20, 0.45, 0.85);
-    vec3 horizon = vec3(0.72, 0.86, 0.98);
+    vec3 zenith  = uSkyTop;
+    vec3 horizon = uSkyHorizon;
     vec3 sky = mix(horizon, zenith, pow(clamp(h, 0.0, 1.0), 0.55));
     if (h < 0.0) sky = mix(horizon, vec3(0.62, 0.74, 0.86), clamp(-h * 4.0, 0.0, 1.0));
 
     // sun
-    vec3 sunDir = normalize(vec3(-0.35, 0.85, 0.40));
+    vec3 sunDir = normalize(uSunDirSky);
     float s = max(dot(dir, sunDir), 0.0);
-    sky += vec3(1.0, 0.95, 0.80) * (pow(s, 600.0) * 1.2 + pow(s, 12.0) * 0.10);
+    sky += uSunColor * (pow(s, 600.0) * 1.2 + pow(s, 12.0) * 0.10);
 
     // clouds on a flat layer
     if (h > 0.01) {
@@ -114,7 +127,12 @@ void main() {
         float c = fbm(uv * 1.4 + vec2(3.0, 7.0));
         c = smoothstep(0.50, 0.78, c);
         float fade = smoothstep(0.01, 0.20, h);
-        sky = mix(sky, vec3(1.0), c * 0.92 * fade);
+        sky = mix(sky, vec3(uCloudLight), c * 0.92 * fade);
+    }
+    if (uStars > 0.0 && h > 0.0) {
+        vec2 g = floor(dir.xz / (h + 0.25) * 90.0);
+        float st = step(0.985, hash(g));
+        sky += vec3(st * uStars * smoothstep(0.0, 0.25, h));
     }
     result = vec4(clamp(sky, 0.0, 1.0), 1.0);
 }

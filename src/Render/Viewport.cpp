@@ -38,6 +38,25 @@ shared_ptr<GpuMesh> upload(const MeshData& m, VertexBuffer::UsageHint hint) {
     return g;
 }
 
+struct LightingPreset {
+    float top[3], horizon[3], sun[3], sunColor[3], tint[3];
+    float ambient, sunPower, stars, cloud;
+};
+
+LightingPreset lightingPreset(Lighting l) {
+    switch (l) {
+    case Lighting::Sunset:
+        return {{0.22f, 0.28f, 0.58f}, {1.00f, 0.62f, 0.34f}, {-0.85f, 0.16f, 0.50f}, {1.0f, 0.55f, 0.25f}, {1.0f, 0.86f, 0.76f},
+                0.42f, 0.55f, 0.0f, 0.95f};
+    case Lighting::Night:
+        return {{0.01f, 0.02f, 0.08f}, {0.07f, 0.09f, 0.22f}, {0.30f, 0.60f, -0.50f}, {0.75f, 0.80f, 1.0f}, {0.55f, 0.62f, 0.98f},
+                0.34f, 0.30f, 1.0f, 0.25f};
+    default:
+        return {{0.20f, 0.45f, 0.85f}, {0.72f, 0.86f, 0.98f}, {-0.35f, 0.85f, 0.40f}, {1.0f, 0.95f, 0.80f}, {1.0f, 1.0f, 1.0f},
+                0.46f, 0.62f, 0.0f, 1.0f};
+    }
+}
+
 GKey letter(char c) { return GKey(GKey::Value(c)); }
 
 }  // namespace
@@ -166,6 +185,7 @@ public:
 
     void onSimulation(RealTime rdt, SimTime sdt, SimTime idt) override {
         GApp::onSimulation(rdt, sdt, idt);
+        if (m_editor.takeCameraReset()) m_camera = FlyCamera();
         m_dt = float(std::min(rdt, 0.1));
         m_editor.setCamera(m_camera.position, m_camera.forward());
     }
@@ -186,8 +206,9 @@ public:
         glDisable(GL_SCISSOR_TEST);
 
         if (m_meshVersion != m_editor.version()) rebuildScene();
+        const LightingPreset L = lightingPreset(m_editor.lighting());
 
-        rd->setColorClearValue(Color3(0.7f, 0.85f, 0.98f));
+        rd->setColorClearValue(Color3(L.horizon[0], L.horizon[1], L.horizon[2]));
         rd->clear();
 
         // sky
@@ -204,6 +225,12 @@ public:
             args.setUniform("uRight", Vector3(r.x, r.y, r.z), true);
             args.setUniform("uUp", Vector3(u.x, u.y, u.z), true);
             args.setUniform("uTan", Vector2(m_camera.tanHalfFov() * (w / h), m_camera.tanHalfFov()), true);
+            args.setUniform("uSkyTop", Vector3(L.top[0], L.top[1], L.top[2]), true);
+            args.setUniform("uSkyHorizon", Vector3(L.horizon[0], L.horizon[1], L.horizon[2]), true);
+            args.setUniform("uSunDirSky", Vector3(L.sun[0], L.sun[1], L.sun[2]), true);
+            args.setUniform("uSunColor", Vector3(L.sunColor[0], L.sunColor[1], L.sunColor[2]), true);
+            args.setUniform("uStars", L.stars, true);
+            args.setUniform("uCloudLight", L.cloud, true);
             rd->apply(m_skyShader, args);
         }
         rd->popState();
@@ -213,8 +240,19 @@ public:
         rd->setDepthTest(RenderDevice::DEPTH_LESS);
         rd->setDepthWrite(true);
         rd->setCullFace(CullFace::BACK);
-        drawMesh(rd, m_scene, vp, false);
+        drawMesh(rd, m_scene, vp, false, L);
         rd->popState();
+
+        // see-through parts, blended over everything opaque
+        if (m_sceneAlpha) {
+            rd->pushState();
+            rd->setDepthTest(RenderDevice::DEPTH_LESS);
+            rd->setDepthWrite(false);
+            rd->setCullFace(CullFace::BACK);
+            rd->setBlendFunc(RenderDevice::BLEND_SRC_ALPHA, RenderDevice::BLEND_ONE_MINUS_SRC_ALPHA);
+            drawMesh(rd, m_sceneAlpha, vp, false, L);
+            rd->popState();
+        }
 
         // selection box and handles (rebuilt every frame; they are tiny)
         MeshData box, handles;
@@ -223,7 +261,7 @@ public:
             rd->pushState();
             rd->setDepthTest(RenderDevice::DEPTH_LEQUAL);
             rd->setCullFace(CullFace::BACK);
-            drawMesh(rd, upload(box, VertexBuffer::WRITE_EVERY_FRAME), vp, true);
+            drawMesh(rd, upload(box, VertexBuffer::WRITE_EVERY_FRAME), vp, true, L);
             rd->popState();
         }
         if (!handles.idx.empty()) {
@@ -231,7 +269,7 @@ public:
             rd->setDepthTest(RenderDevice::DEPTH_ALWAYS_PASS);
             rd->setDepthWrite(false);
             rd->setCullFace(CullFace::BACK);
-            drawMesh(rd, upload(handles, VertexBuffer::WRITE_EVERY_FRAME), vp, true);
+            drawMesh(rd, upload(handles, VertexBuffer::WRITE_EVERY_FRAME), vp, true, L);
             rd->popState();
         }
     }
@@ -241,15 +279,19 @@ public:
 
 private:
     void rebuildScene() {
-        MeshData m;
+        MeshData m, glass;
         std::vector<Part*> parts;
         m_editor.workspace()->collectParts(parts);
-        for (const Part* p : parts) meshbuilder::addPart(m, *p);
+        for (const Part* p : parts) {
+            if (p->transparency >= 0.95f) continue;                    // invisible
+            meshbuilder::addPart(p->transparency > 0.0f ? glass : m, *p);
+        }
         m_scene = upload(m, VertexBuffer::WRITE_ONCE);
+        m_sceneAlpha = upload(glass, VertexBuffer::WRITE_ONCE);
         m_meshVersion = m_editor.version();
     }
 
-    void drawMesh(RenderDevice* rd, const shared_ptr<GpuMesh>& g, const float vp[16], bool flat) {
+    void drawMesh(RenderDevice* rd, const shared_ptr<GpuMesh>& g, const float vp[16], bool flat, const LightingPreset& L) {
         if (!g) return;
         Args args;
         args.setPrimitiveType(PrimitiveType::TRIANGLES);
@@ -263,6 +305,10 @@ private:
         args.setUniform("vp2", Vector4(vp[8], vp[9], vp[10], vp[11]), true);
         args.setUniform("vp3", Vector4(vp[12], vp[13], vp[14], vp[15]), true);
         args.setUniform("uFlat", flat ? 1.0f : 0.0f, true);
+        args.setUniform("uSunDir", Vector3(L.sun[0], L.sun[1], L.sun[2]), true);
+        args.setUniform("uTint", Vector3(L.tint[0], L.tint[1], L.tint[2]), true);
+        args.setUniform("uAmbient", L.ambient, true);
+        args.setUniform("uSunPower", L.sunPower, true);
         rd->apply(m_sceneShader, args);
     }
 
@@ -284,7 +330,7 @@ private:
 
     shared_ptr<Shader>  m_sceneShader, m_skyShader;
     AttributeArray      m_skyPos;
-    shared_ptr<GpuMesh> m_scene;
+    shared_ptr<GpuMesh> m_scene, m_sceneAlpha;
 };
 
 class ViewportImpl : public IViewport {

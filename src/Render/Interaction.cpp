@@ -13,6 +13,7 @@ Part* Interaction::pick(const geom::Ray& ray) const {
     Part* best = nullptr;
     float bestT = 1e30f;
     for (Part* p : parts) {
+        if (p->locked) continue;
         const float t = geom::intersectBox(ray, p->position, p->orientation, p->size * 0.5f);
         if (t >= 0 && t < bestT) { bestT = t; best = p; }
     }

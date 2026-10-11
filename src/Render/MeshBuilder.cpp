@@ -42,7 +42,7 @@ struct Face { int n, u, v; float sign; };
 const Face kFaces[6] = {{0, 1, 2, +1}, {0, 2, 1, -1}, {1, 2, 0, +1}, {1, 0, 2, -1}, {2, 0, 1, +1}, {2, 1, 0, -1}};
 
 
-void addStud(MeshData& m, const Vec3& base, const Mat3& rot, const Vec3& color) {
+void addStud(MeshData& m, const Vec3& base, const Mat3& rot, const Vec3& color, const Vec3& aux) {
     const Vec3 up = geom::column(rot, 1);
     int ring0[kStudSides], ring1[kStudSides];
     Vec3 radial[kStudSides];
@@ -51,19 +51,19 @@ void addStud(MeshData& m, const Vec3& base, const Mat3& rot, const Vec3& color) 
         const Vec3 l(std::cos(a) * kStudRadius, 0, std::sin(a) * kStudRadius);
         const Vec3 w = rot * l;
         radial[i] = geom::normalize(w);
-        ring0[i] = m.addVertex(base + w, radial[i], color);
-        ring1[i] = m.addVertex(base + w + up * kStudHeight, radial[i], color);
+        ring0[i] = m.addVertex(base + w, radial[i], color, aux);
+        ring1[i] = m.addVertex(base + w + up * kStudHeight, radial[i], color, aux);
     }
     for (int i = 0; i < kStudSides; ++i) {
         const int j = (i + 1) % kStudSides;
         m.addQuad(ring0[i], ring0[j], ring1[j], ring1[i], radial[i] + radial[j]);
     }
     // top cap with its own vertices so the normal is flat
-    const int centre = m.addVertex(base + up * kStudHeight, up, color);
+    const int centre = m.addVertex(base + up * kStudHeight, up, color, aux);
     int cap[kStudSides];
     for (int i = 0; i < kStudSides; ++i) {
         const float a = 2.0f * kPi * i / kStudSides;
-        cap[i] = m.addVertex(base + rot * Vec3(std::cos(a) * kStudRadius, kStudHeight, std::sin(a) * kStudRadius), up, color);
+        cap[i] = m.addVertex(base + rot * Vec3(std::cos(a) * kStudRadius, kStudHeight, std::sin(a) * kStudRadius), up, color, aux);
     }
     for (int i = 0; i < kStudSides; ++i) m.addTri(centre, cap[i], cap[(i + 1) % kStudSides], up);
 }
@@ -84,14 +84,109 @@ void addBox(MeshData& m, const Vec3& center, const Mat3& rot, const Vec3& half, 
     }
 }
 
+namespace {
+
+// aux.z packs two things: bit 0 = "paint studs in the shader", the rest = 2 * transparency in tenths.
+float auxZ(const Part& p, bool shaderStuds) {
+    const int tenths = std::max(0, std::min(10, int(std::floor(p.transparency * 10.0f + 0.5f))));
+    return (shaderStuds ? 1.0f : 0.0f) + 2.0f * float(tenths);
+}
+
+void addEllipsoid(MeshData& m, const Part& p, const Vec3& color, const Vec3& aux) {
+    const int slices = 20, stacks = 12;
+    const Vec3 half = p.size * 0.5f;
+    std::vector<int> v;
+    for (int i = 0; i <= stacks; ++i) {
+        const float phi = kPi * i / stacks;                       // 0 = top pole
+        for (int k = 0; k <= slices; ++k) {
+            const float th = 2.0f * kPi * k / slices;
+            const Vec3 d(std::sin(phi) * std::cos(th), std::cos(phi), std::sin(phi) * std::sin(th));
+            const Vec3 local(d.x * half.x, d.y * half.y, d.z * half.z);
+            // normal of an ellipsoid: gradient of the implicit surface
+            const Vec3 nl(d.x / std::max(half.x, 0.01f), d.y / std::max(half.y, 0.01f), d.z / std::max(half.z, 0.01f));
+            v.push_back(m.addVertex(p.position + p.orientation * local, geom::normalize(p.orientation * nl), color, aux));
+        }
+    }
+    for (int i = 0; i < stacks; ++i)
+        for (int k = 0; k < slices; ++k) {
+            const int a = v[i * (slices + 1) + k], b = v[i * (slices + 1) + k + 1];
+            const int c = v[(i + 1) * (slices + 1) + k + 1], d = v[(i + 1) * (slices + 1) + k];
+            const Vec3 n(m.nrm[a * 3] + m.nrm[c * 3], m.nrm[a * 3 + 1] + m.nrm[c * 3 + 1], m.nrm[a * 3 + 2] + m.nrm[c * 3 + 2]);
+            m.addTri(a, b, c, n);
+            m.addTri(a, c, d, n);
+        }
+}
+
+// Cylinder along the part's local X axis (like the original).
+void addCylinder(MeshData& m, const Part& p, const Vec3& color, const Vec3& aux) {
+    const int sides = 24;
+    const Vec3 half = p.size * 0.5f;
+    const Vec3 ax = geom::column(p.orientation, 0);
+    int ringA[sides + 1], ringB[sides + 1], capA[sides + 1], capB[sides + 1];
+    for (int k = 0; k <= sides; ++k) {
+        const float a = 2.0f * kPi * k / sides;
+        const Vec3 local(0, std::cos(a) * half.y, std::sin(a) * half.z);
+        const Vec3 nl(0, std::cos(a) / std::max(half.y, 0.01f), std::sin(a) / std::max(half.z, 0.01f));
+        const Vec3 n = geom::normalize(p.orientation * nl);
+        const Vec3 w = p.orientation * local;
+        ringA[k] = m.addVertex(p.position - ax * half.x + w, n, color, aux);
+        ringB[k] = m.addVertex(p.position + ax * half.x + w, n, color, aux);
+        capA[k] = m.addVertex(p.position - ax * half.x + w, ax * -1.0f, color, aux);
+        capB[k] = m.addVertex(p.position + ax * half.x + w, ax, color, aux);
+    }
+    const int cA = m.addVertex(p.position - ax * half.x, ax * -1.0f, color, aux);
+    const int cB = m.addVertex(p.position + ax * half.x, ax, color, aux);
+    for (int k = 0; k < sides; ++k) {
+        const Vec3 n(m.nrm[ringA[k] * 3] + m.nrm[ringA[k + 1] * 3], m.nrm[ringA[k] * 3 + 1] + m.nrm[ringA[k + 1] * 3 + 1],
+                     m.nrm[ringA[k] * 3 + 2] + m.nrm[ringA[k + 1] * 3 + 2]);
+        m.addQuad(ringA[k], ringA[k + 1], ringB[k + 1], ringB[k], n);
+        m.addTri(cA, capA[k], capA[k + 1], ax * -1.0f);
+        m.addTri(cB, capB[k], capB[k + 1], ax);
+    }
+}
+
+// Right-angle wedge: vertical face at +Z, slope rising from the front-bottom edge to the back-top edge.
+void addWedge(MeshData& m, const Part& p, const Vec3& color, const Vec3& aux) {
+    const Vec3 h = p.size * 0.5f;
+    auto W = [&](float x, float y, float z) { return p.position + p.orientation * Vec3(x * h.x, y * h.y, z * h.z); };
+    auto N = [&](float x, float y, float z) { return geom::normalize(p.orientation * Vec3(x, y, z)); };
+    auto quad = [&](const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& d, const Vec3& n) {
+        const int ia = m.addVertex(a, n, color, aux), ib = m.addVertex(b, n, color, aux);
+        const int ic = m.addVertex(c, n, color, aux), id = m.addVertex(d, n, color, aux);
+        m.addQuad(ia, ib, ic, id, n);
+    };
+    auto tri = [&](const Vec3& a, const Vec3& b, const Vec3& c, const Vec3& n) {
+        const int ia = m.addVertex(a, n, color, aux), ib = m.addVertex(b, n, color, aux), ic = m.addVertex(c, n, color, aux);
+        m.addTri(ia, ib, ic, n);
+    };
+    quad(W(-1, -1, -1), W(1, -1, -1), W(1, -1, 1), W(-1, -1, 1), N(0, -1, 0));               // bottom
+    quad(W(-1, -1, 1), W(1, -1, 1), W(1, 1, 1), W(-1, 1, 1), N(0, 0, 1));                    // back
+    const Vec3 sn = N(0, p.size.z, -p.size.y);                                               // slope
+    quad(W(-1, -1, -1), W(1, -1, -1), W(1, 1, 1), W(-1, 1, 1), sn);
+    tri(W(-1, -1, -1), W(-1, -1, 1), W(-1, 1, 1), N(-1, 0, 0));                              // sides
+    tri(W(1, -1, -1), W(1, -1, 1), W(1, 1, 1), N(1, 0, 0));
+}
+
+}  // namespace
+
 void addPart(MeshData& m, const Part& p) {
     const Vec3 color = brickRgb(p.brickColor);
     const Vec3 half = p.size * 0.5f;
+
+    if (p.shape != PartShape::Block) {
+        const Vec3 aux(0, 0, auxZ(p, false));
+        if (p.shape == PartShape::Ball) addEllipsoid(m, p, color, aux);
+        else if (p.shape == PartShape::Cylinder) addCylinder(m, p, color, aux);
+        else addWedge(m, p, color, aux);
+        return;
+    }
+
     const bool studs = p.topSurface == SurfaceType::Studs;
     const int nx = std::max(1, int(std::floor(p.size.x + 0.5f)));
     const int nz = std::max(1, int(std::floor(p.size.z + 0.5f)));
     const bool realStuds = studs && nx * nz <= kMaxRealStuds;
     const bool shaderStuds = studs && !realStuds;
+    const float az = auxZ(p, shaderStuds);
 
     for (const Face& f : kFaces) {
         const Vec3 n = geom::column(p.orientation, f.n) * f.sign;
@@ -101,10 +196,10 @@ void addPart(MeshData& m, const Part& p) {
         // Local coordinates on the top face (in studs), used by the shader pattern.
         const bool top = (f.n == 1 && f.sign > 0);
         auto aux = [&](float su, float sv) {
-            if (!(top && shaderStuds)) return Vec3();
+            if (!(top && shaderStuds)) return Vec3(0, 0, az - (shaderStuds ? 1.0f : 0.0f));
             const float uu = (f.u == 0 ? su * half.x : sv * half.x) + half.x;
             const float vv = (f.u == 0 ? sv * half.z : su * half.z) + half.z;
-            return Vec3(uu, vv, 1.0f);
+            return Vec3(uu, vv, az);
         };
         const int a = m.addVertex(c - u - v, n, color, aux(-1, -1));
         const int b = m.addVertex(c + u - v, n, color, aux(+1, -1));
@@ -114,10 +209,11 @@ void addPart(MeshData& m, const Part& p) {
     }
 
     if (realStuds) {
+        const Vec3 studAux(0, 0, az);
         for (int i = 0; i < nx; ++i)
             for (int k = 0; k < nz; ++k) {
                 const Vec3 local(-half.x + (i + 0.5f) * p.size.x / nx, half.y, -half.z + (k + 0.5f) * p.size.z / nz);
-                addStud(m, p.position + p.orientation * local, p.orientation, color);
+                addStud(m, p.position + p.orientation * local, p.orientation, color, studAux);
             }
     }
 }
