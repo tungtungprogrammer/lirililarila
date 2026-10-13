@@ -49,6 +49,7 @@ void Interaction::hover(const geom::Ray& ray, const Vec3& cam) {
 }
 
 void Interaction::mouseDown(const geom::Ray& ray, const Vec3& cam) {
+    if (m_editor.soloMode()) return;                                         // the player is in control
     if (m_editor.simulating()) { m_editor.select(pick(ray)); return; }     // no dragging while Run is active
     const HandleRef h = pickHandle(ray, cam);
     Part* sel = m_editor.selected();
@@ -129,7 +130,7 @@ void Interaction::mouseUp() {
 
 void Interaction::buildOverlays(MeshData& box, MeshData& handles, const Vec3& cam) const {
     Part* p = m_editor.selected();
-    if (!p) return;
+    if (!p || m_editor.soloMode()) return;
     meshbuilder::addFrame(box, p->position, p->orientation, p->size * 0.5f + Vec3(0.02f, 0.02f, 0.02f), 0.03f, kSelectColor);
     if (m_editor.tool() == Tool::Select || m_editor.simulating()) return;
 

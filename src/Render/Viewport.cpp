@@ -116,6 +116,37 @@ public:
         const float ndcY = 1.0f - mouse.y / h * 2.0f;
         const bool inside = mouse.x >= 0 && mouse.y >= 0 && mouse.x < w && mouse.y < h;
 
+        // ---- Play Solo: the player and a third-person camera replace the editor controls ----
+        if (Character* ch = m_editor.character()) {
+            if (!m_wasSolo) {
+                m_savedCamera = m_camera;
+                m_orbitYaw = ch->yaw;
+                m_orbitPitch = -0.3f;
+                m_orbitDist = 14.0f;
+                m_wasSolo = true;
+            }
+            if (right) {
+                m_orbitYaw -= (mouse.x - m_lastMouse.x) * 0.005f;
+                m_orbitPitch = std::max(-1.3f, std::min(1.3f, m_orbitPitch - (mouse.y - m_lastMouse.y) * 0.005f));
+            }
+            const Vec3 f(-std::sin(m_orbitYaw), 0, -std::cos(m_orbitYaw));
+            const Vec3 r(std::cos(m_orbitYaw), 0, -std::sin(m_orbitYaw));
+            Vec3 dir;
+            if (ui->keyDown(letter('w')) || ui->keyDown(GKey::UP)) dir = dir + f;
+            if (ui->keyDown(letter('s')) || ui->keyDown(GKey::DOWN)) dir = dir - f;
+            if (ui->keyDown(letter('d')) || ui->keyDown(GKey::RIGHT)) dir = dir + r;
+            if (ui->keyDown(letter('a')) || ui->keyDown(GKey::LEFT)) dir = dir - r;
+            m_editor.setCharacterInput(dir, ui->keyDown(GKey::SPACE));
+            m_lastMouse = mouse;
+            m_leftWas = left;
+            return;
+        }
+        if (m_wasSolo) {                                   // solo ended: back to the editor camera
+            m_camera = m_savedCamera;
+            m_wasSolo = false;
+            m_editor.setCharacterInput(Vec3(), false);
+        }
+
         // ---- camera ----
         if (right) {
             m_camera.look(mouse.x - m_lastMouse.x, mouse.y - m_lastMouse.y);
@@ -166,6 +197,10 @@ public:
     }
 
     bool onEvent(const GEvent& e) override {
+        if (e.type == GEventType::MOUSE_SCROLL_2D && m_editor.soloMode()) {
+            m_orbitDist = std::max(0.5f, std::min(80.0f, m_orbitDist * std::pow(0.9f, float(e.scroll2d.dy))));
+            return true;
+        }
         if (e.type == GEventType::MOUSE_SCROLL_2D) {
             m_camera.position = m_camera.position + m_camera.forward() * (float(e.scroll2d.dy) * 2.0f);
             return true;
@@ -187,6 +222,7 @@ public:
         GApp::onSimulation(rdt, sdt, idt);
         if (m_editor.takeCameraReset()) m_camera = FlyCamera();
         m_editor.advance(float(rdt));
+        if (Character* ch = m_editor.character()) updateSoloCamera(*ch);
         m_dt = float(std::min(rdt, 0.1));
         m_editor.setCamera(m_camera.position, m_camera.forward());
     }
@@ -243,6 +279,14 @@ public:
         rd->setCullFace(CullFace::BACK);
         drawMesh(rd, m_scene, vp, false, L);
         drawMesh(rd, m_sceneDyn, vp, false, L);
+        if (Character* ch = m_editor.character()) {
+            if (m_camDist > 1.8f) {                                    // hidden in first person
+                MeshData body;
+                for (Part* p : ch->parts()) meshbuilder::addPart(body, *p);
+                for (const Character::FaceBox& fb : ch->face()) meshbuilder::addBox(body, fb.center, fb.rot, fb.half, Vec3(0.04f, 0.04f, 0.04f));
+                drawMesh(rd, upload(body, VertexBuffer::WRITE_EVERY_FRAME), vp, false, L);
+            }
+        }
         rd->popState();
 
         // see-through parts, blended over everything opaque
@@ -322,6 +366,25 @@ private:
         rd->apply(m_sceneShader, args);
     }
 
+    // Orbit camera behind the player; pulled in when something is in the way.
+    void updateSoloCamera(const Character& ch) {
+        const Vec3 focus = ch.focusPosition();
+        m_camera.yaw = m_orbitYaw;
+        m_camera.pitch = m_orbitPitch;
+        const Vec3 back = m_camera.forward() * -1.0f;
+        float dist = m_orbitDist;
+        std::vector<Part*> parts;
+        m_editor.workspace()->collectParts(parts);
+        const geom::Ray ray{focus, back};
+        for (const Part* p : parts) {
+            if (p->transparency > 0.0f) continue;
+            const float t = geom::intersectBox(ray, p->position, p->orientation, p->size * 0.5f);
+            if (t >= 0 && t < dist) dist = t - 0.3f;
+        }
+        m_camDist = std::max(0.3f, dist);
+        m_camera.position = focus + back * m_camDist;
+    }
+
     void focusSelection() {
         if (Part* p = m_editor.selected()) {
             const float radius = std::max(2.0f, p->size.length());
@@ -342,6 +405,10 @@ private:
     AttributeArray      m_skyPos;
     shared_ptr<GpuMesh> m_scene, m_sceneDyn, m_sceneAlpha;
     unsigned long m_simVersionSeen = 0;
+
+    bool      m_wasSolo = false;
+    FlyCamera m_savedCamera;
+    float     m_orbitYaw = 0, m_orbitPitch = -0.3f, m_orbitDist = 14.0f, m_camDist = 14.0f;
 };
 
 class ViewportImpl : public IViewport {
