@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "Signal.h"
+#include "Character.h"
 #include "Physics.h"
 #include "Workspace.h"
 
@@ -70,6 +71,11 @@ public:
     void play();                       // snapshot the place and start the physics (or resume)
     void pause();
     void stop();                       // restore the place exactly as it was before Run
+    void playSolo();                   // Run + the player character with a third-person camera
+    bool soloMode() const { return m_solo && m_run != RunState::Stopped; }
+    Character* character() { return soloMode() ? &m_character : nullptr; }
+    // Player input from the viewport: world-space move direction (horizontal, length <= 1) and jump.
+    void setCharacterInput(const Vec3& direction, bool jump) { m_inputDir = direction; m_inputJump = jump; }
     void advance(float seconds);       // called every frame by the renderer; steps at a fixed 1/60 s
     unsigned long simVersion() const { return m_simVersion; }   // changes every physics step
 
@@ -129,6 +135,11 @@ private:
     Physics      m_physics;
     std::vector<std::pair<std::shared_ptr<Part>, PartState>> m_snapshot;
     bool         m_modifiedBeforeRun = false;
+    bool         m_solo = false;
+    Character    m_character;
+    Vec3         m_inputDir;
+    bool         m_inputJump = false;
+    Vec3 spawnPoint(float& yaw) const;
     float        m_accumulator = 0;
     unsigned long m_simVersion = 1;
 

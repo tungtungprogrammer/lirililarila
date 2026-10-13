@@ -263,6 +263,18 @@ void Physics::start(const std::vector<Part*>& parts) {
     }
 }
 
+void Physics::push(const Part* part, const Vec3& dir, float speed) {
+    for (Body& b : m_bodies) {
+        if (b.part != part) continue;
+        if (b.isStatic || b.dead) return;
+        b.sleeping = false;
+        b.sleepTimer = 0;
+        const float along = b.v.dot(dir);
+        if (along < speed) b.v = b.v + dir * (speed - along);
+        return;
+    }
+}
+
 void Physics::step(float dt) {
     // two substeps per call keep stacks stable
     substep(dt * 0.5f);

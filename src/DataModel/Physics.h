@@ -29,6 +29,9 @@ public:
     // Advances by dt seconds (callers use a fixed step); writes the results back into the parts.
     void step(float dt);
 
+    // Makes sure a part moves at least `speed` along `dir` (used when the player pushes bricks); wakes it if asleep.
+    void push(const Part* part, const Vec3& dir, float speed);
+
     float gravity = 196.2f;            // studs / s^2, the classic value
     const std::vector<Body>& bodies() const { return m_bodies; }
 

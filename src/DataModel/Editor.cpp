@@ -18,6 +18,14 @@ void Editor::newPlace() {
     base.anchored = true;
     ws->createPart(base);
 
+    PartState spawn;
+    spawn.name = "SpawnLocation";
+    spawn.size = Vec3(6, 1, 6);
+    spawn.position = Vec3(0, 0.5f, 14);
+    spawn.brickColor = kBrickMediumStoneGrey;
+    spawn.anchored = true;
+    ws->createPart(spawn);
+
     PartState b;
     b.name = "Part";
     b.brickColor = kBrickBrightRed;    b.position = Vec3(0, 0.6f, 0);    ws->createPart(b);
@@ -30,6 +38,7 @@ void Editor::newPlace() {
 void Editor::resetPlace(const std::shared_ptr<Workspace>& ws, const std::string& filePath) {
     if (m_run != RunState::Stopped) {      // the old place is going away; nothing to restore
         m_run = RunState::Stopped;
+        m_solo = false;
         m_physics.clear();
         m_snapshot.clear();
         runStateChanged();
@@ -356,7 +365,7 @@ void Editor::play() {
     m_physics.start(parts);
     m_accumulator = 0;
     m_run = RunState::Running;
-    log("Running (" + std::to_string(parts.size()) + " parts)");
+    log(m_solo ? "Playing solo (" + std::to_string(parts.size()) + " parts)" : "Running (" + std::to_string(parts.size()) + " parts)");
     runStateChanged();
 }
 
@@ -370,6 +379,7 @@ void Editor::pause() {
 void Editor::stop() {
     if (m_run == RunState::Stopped) return;
     m_run = RunState::Stopped;
+    m_solo = false;
     m_physics.clear();
     for (auto& entry : m_snapshot) entry.first->setState(entry.second);
     m_snapshot.clear();
@@ -387,6 +397,15 @@ void Editor::advance(float seconds) {
     int steps = 0;
     while (m_accumulator >= 1.0f / 60.0f && steps < 4) {
         m_physics.step(1.0f / 60.0f);
+        if (m_solo) {
+            std::vector<Part*> world;
+            m_workspace->collectParts(world);
+            m_character.step(1.0f / 60.0f, m_inputDir, m_inputJump, world, &m_physics);
+            if (m_character.feet.y < -100.0f) {            // fell off the world: respawn
+                float yaw; const Vec3 sp = spawnPoint(yaw);
+                m_character.spawn(sp, yaw);
+            }
+        }
         m_accumulator -= 1.0f / 60.0f;
         ++steps;
     }
@@ -395,4 +414,27 @@ void Editor::advance(float seconds) {
         ++m_simVersion;
         if (m_selected) partChanged(m_selected);
     }
+}
+
+// The player appears on the first part named "SpawnLocation" (or at the origin if there is none).
+Vec3 Editor::spawnPoint(float& yaw) const {
+    yaw = 0;
+    std::vector<Part*> parts;
+    m_workspace->collectParts(parts);
+    for (const Part* p : parts)
+        if (p->name == "SpawnLocation") return Vec3(p->position.x, p->position.y + p->size.y * 0.5f + 0.1f, p->position.z);
+    return Vec3(0, 6, 0);
+}
+
+void Editor::playSolo() {
+    if (m_run != RunState::Stopped) stop();
+    m_solo = true;
+    float yaw;
+    const Vec3 sp = spawnPoint(yaw);
+    m_character.spawn(sp, yaw);
+    m_inputDir = Vec3();
+    m_inputJump = false;
+    select(nullptr);
+    play();                    // snapshot + physics
+    runStateChanged();
 }
