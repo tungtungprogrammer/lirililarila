@@ -12,6 +12,7 @@ const std::vector<ToolboxPanel::Preset>& ToolboxPanel::presets() {
         {"Ball",   "Sphere, 4 studs across",    Vec3(4, 4, 4), PartShape::Ball},
         {"Cylinder", "Cylinder lying along X",  Vec3(4, 2, 2), PartShape::Cylinder},
         {"Wedge",  "Ramp / slope",              Vec3(4, 2, 4), PartShape::Wedge},
+        {"Spawn",  "Where the player appears in Play Solo", Vec3(6, 1, 6), PartShape::Block},
     };
     return list;
 }
@@ -32,5 +33,11 @@ ToolboxPanel::ToolboxPanel(Editor& editor, QWidget* parent) : QListWidget(parent
 void ToolboxPanel::insert(int index) {
     if (index < 0 || index >= static_cast<int>(presets().size())) { return; }
     const Preset& p = presets()[static_cast<std::size_t>(index)];
-    m_editor.insertPart(p.shape == PartShape::Block ? "Part" : p.label, p.size, kBrickMediumStoneGrey, p.shape);
+    Part* part = m_editor.insertPart(p.shape == PartShape::Block ? "Part" : p.label, p.size, kBrickMediumStoneGrey, p.shape);
+    if (part && std::string(p.label) == "Spawn") {
+        PartState s = part->state();
+        s.name = "SpawnLocation";
+        s.anchored = true;
+        m_editor.setPartState(part, s, "Make SpawnLocation");
+    }
 }

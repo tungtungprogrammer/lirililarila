@@ -90,6 +90,7 @@ void MainWindow::buildActions() {
     aInsertPlate = mk("&Plate", Icons::Brick, QKeySequence(), false);
     aInsertCube = mk("&Cube", Icons::Brick, QKeySequence(), false);
     aRun = mk("&Run", Icons::Run, QKeySequence(Qt::Key_F5));
+    aPlaySolo = mk("Play &Solo", Icons::PlaySolo, QKeySequence(Qt::Key_F7));
     aPause = mk("&Pause", Icons::Pause, QKeySequence(Qt::Key_F6));
     aStop = mk("S&top", Icons::Stop, QKeySequence(Qt::SHIFT | Qt::Key_F5));
     aAnchor = mk("&Anchor / Unanchor", Icons::Move, QKeySequence(Qt::CTRL | Qt::Key_B), false);
@@ -119,6 +120,7 @@ void MainWindow::buildActions() {
     connect(aInsertPlate, &QAction::triggered, this, [this] { m_toolbox->insert(1); });
     connect(aInsertCube, &QAction::triggered, this, [this] { m_toolbox->insert(2); });
     connect(aRun, &QAction::triggered, this, [this] { m_editor.play(); });
+    connect(aPlaySolo, &QAction::triggered, this, [this] { m_editor.playSolo(); });
     connect(aPause, &QAction::triggered, this, [this] { m_editor.pause(); });
     connect(aStop, &QAction::triggered, this, [this] { m_editor.stop(); });
     connect(aAnchor, &QAction::triggered, this, [this] { m_editor.toggleAnchorSelected(); });
@@ -226,6 +228,7 @@ void MainWindow::buildMenus() {
     tools->addAction(aResize);
     tools->addSeparator();
     tools->addAction(aRun);
+    tools->addAction(aPlaySolo);
     tools->addAction(aPause);
     tools->addAction(aStop);
     tools->addSeparator();
@@ -268,7 +271,7 @@ void MainWindow::buildToolbars() {
     auto* run = addToolBar("Run");
     run->setObjectName("runBar");
     run->setMovable(false);
-    for (QAction* a : {aRun, aPause, aStop}) run->addAction(a);
+    for (QAction* a : {aRun, aPlaySolo, aPause, aStop}) run->addAction(a);
 }
 
 void MainWindow::refreshActions() {
@@ -283,6 +286,7 @@ void MainWindow::refreshActions() {
     // Run / Pause / Stop, and editing is locked while a simulation is active
     const RunState rs = m_editor.runState();
     aRun->setEnabled(rs != RunState::Running);
+    aPlaySolo->setEnabled(!m_editor.soloMode() || rs == RunState::Paused);
     aPause->setEnabled(rs == RunState::Running);
     aStop->setEnabled(rs != RunState::Stopped);
     if (rs != RunState::Stopped) {
@@ -305,8 +309,13 @@ void MainWindow::refreshActions() {
     static const char* kShapeNames[] = {"Block", "Ball", "Cylinder", "Wedge"};
     static const char* kToolNames[] = {"Select", "Move", "Resize"};
     if (rs != RunState::Stopped) {
-        m_status->setText(rs == RunState::Running ? "Running - press Stop (Shift+F5) to return to editing"
-                                                  : "Paused - Run resumes, Stop returns to editing");
+        if (m_editor.soloMode())
+            m_status->setText(rs == RunState::Running
+                                  ? "Playing solo - WASD / arrows move, Space jumps, right-drag turns the camera, wheel zooms. Shift+F5 stops."
+                                  : "Paused - Run resumes, Stop returns to editing");
+        else
+            m_status->setText(rs == RunState::Running ? "Running - press Stop (Shift+F5) to return to editing"
+                                                      : "Paused - Run resumes, Stop returns to editing");
     } else if (Part* p = m_editor.selected()) {
         m_status->setText(QString("%1 (%2)  size %3 x %4 x %5%6%7")
                               .arg(QString::fromStdString(p->name), kShapeNames[static_cast<int>(p->shape)])
@@ -379,6 +388,7 @@ void MainWindow::controls() {
         "<b>Tools</b><br>1 Select &nbsp; 2 Move &nbsp; 3 Resize<br>"
         "Drag a part in Select mode to slide it; drag the arrows in Move / Resize mode.<br><br>"
         "<b>Editing</b><br>Ctrl+Z / Y undo, redo &nbsp; Ctrl+C / X / V &nbsp; Ctrl+D duplicate<br>"
+        "F7 Play Solo: WASD / arrows walk, Space jumps, right-drag turns the camera, wheel zooms<br>"
         "F5 Run &nbsp; F6 Pause &nbsp; Shift+F5 Stop (the place is restored exactly as it was)<br>"
         "Ctrl+R rotate &nbsp; Ctrl+T tilt &nbsp; Ctrl+B anchor &nbsp; Ctrl+L lock &nbsp; Del delete<br>"
         "Locked parts cannot be clicked in the 3D view (select them in the Explorer).");

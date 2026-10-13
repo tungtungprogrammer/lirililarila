@@ -158,6 +158,14 @@ QIcon icon(Id id) {
             p.setPen(QPen(c3(20, 90, 20), 0.9)); p.setBrush(c3(60, 190, 60));
             p.drawPolygon(QPolygonF({QPointF(4, 2.5), QPointF(13, 8), QPointF(4, 13.5)}));
         });
+    case PlaySolo:
+        return makeIcon([](QPainter& p) {
+            p.setPen(QPen(c3(60, 60, 60), 0.8));
+            p.setBrush(c3(245, 205, 48)); p.drawEllipse(QPointF(8, 3.6), 2.4, 2.4);      // head
+            p.setBrush(c3(13, 105, 172)); p.drawRect(QRectF(5, 6.2, 6, 4.6));            // torso
+            p.setBrush(c3(245, 205, 48)); p.drawRect(QRectF(3, 6.2, 2, 4.2)); p.drawRect(QRectF(11, 6.2, 2, 4.2));
+            p.setBrush(c3(75, 151, 75));  p.drawRect(QRectF(5, 10.8, 3, 4.2)); p.drawRect(QRectF(8, 10.8, 3, 4.2));
+        });
     case Pause:
         return makeIcon([](QPainter& p) {
             p.setPen(QPen(c3(40, 60, 110), 0.9)); p.setBrush(c3(90, 130, 220));
