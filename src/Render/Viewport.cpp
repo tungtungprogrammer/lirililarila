@@ -8,6 +8,7 @@ using namespace G3D;
 #include "DataModel/Editor.h"
 #include "FlyCamera.h"
 #include "IViewport.h"
+#include "Hud.h"
 #include "Interaction.h"
 #include "MeshBuilder.h"
 #include "Shaders.h"
@@ -124,6 +125,7 @@ public:
                 m_orbitPitch = -0.3f;
                 m_orbitDist = 14.0f;
                 m_wasSolo = true;
+                m_soloTime = 0;
             }
             if (right) {
                 m_orbitYaw -= (mouse.x - m_lastMouse.x) * 0.005f;
@@ -222,7 +224,10 @@ public:
         GApp::onSimulation(rdt, sdt, idt);
         if (m_editor.takeCameraReset()) m_camera = FlyCamera();
         m_editor.advance(float(rdt));
-        if (Character* ch = m_editor.character()) updateSoloCamera(*ch);
+        if (Character* ch = m_editor.character()) {
+            updateSoloCamera(*ch);
+            if (m_editor.runState() == RunState::Running) m_soloTime += float(std::min(rdt, 0.1));
+        }
         m_dt = float(std::min(rdt, 0.1));
         m_editor.setCamera(m_camera.position, m_camera.forward());
     }
@@ -314,6 +319,29 @@ public:
                     drawMesh(rd, upload(sh, VertexBuffer::WRITE_EVERY_FRAME), vp, false, L);
                     rd->popState();
                 }
+            }
+        }
+
+        // heads-up display (health bar, hints, death screen), drawn flat over everything
+        if (Character* ch = m_editor.character()) {
+            HudState hs;
+            hs.width = int(w); hs.height = int(h);
+            hs.solo = true;
+            hs.paused = m_editor.runState() == RunState::Paused;
+            hs.health = ch->health; hs.maxHealth = ch->maxHealth;
+            hs.dead = ch->dead; hs.deadTime = ch->deadTime;
+            hs.soloTime = m_soloTime;
+            MeshData hm;
+            hud::build(hs, hm);
+            if (!hm.idx.empty()) {
+                static const float kIdentity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+                rd->pushState();
+                rd->setDepthTest(RenderDevice::DEPTH_ALWAYS_PASS);
+                rd->setDepthWrite(false);
+                rd->setCullFace(CullFace::NONE);
+                rd->setBlendFunc(RenderDevice::BLEND_SRC_ALPHA, RenderDevice::BLEND_ONE_MINUS_SRC_ALPHA);
+                drawMesh(rd, upload(hm, VertexBuffer::WRITE_EVERY_FRAME), kIdentity, true, L);
+                rd->popState();
             }
         }
 
@@ -450,6 +478,7 @@ private:
     unsigned long m_simVersionSeen = 0;
 
     bool      m_wasSolo = false;
+    float     m_soloTime = 0;
     FlyCamera m_savedCamera;
     float     m_orbitYaw = 0, m_orbitPitch = -0.3f, m_orbitDist = 14.0f, m_camDist = 14.0f;
 };
