@@ -20,6 +20,7 @@ public:
         float  sleepTimer = 0;
         bool   sleeping = false;
         bool   dead = false;           // fell out of the world
+        bool   collides = true;        // CanCollide
         bool   immovable() const { return isStatic || sleeping; }
     };
 

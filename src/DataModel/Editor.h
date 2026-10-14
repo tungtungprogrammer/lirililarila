@@ -8,6 +8,17 @@
 #include "Physics.h"
 #include "Workspace.h"
 
+// Per-place numbers the author can change (Tools > Place Settings).
+struct PlaceSettings {
+    float gravity = 196.2f;      // studs / s^2
+    float walkSpeed = 16.0f;     // player, studs / s
+    float jumpPower = 55.0f;     // player, initial upward speed
+    float maxHealth = 100.0f;
+    bool operator==(const PlaceSettings& o) const {
+        return gravity == o.gravity && walkSpeed == o.walkSpeed && jumpPower == o.jumpPower && maxHealth == o.maxHealth;
+    }
+};
+
 enum class Tool { Select = 0, Move = 1, Resize = 2 };
 enum class RunState { Stopped = 0, Running = 1, Paused = 2 };
 enum class Lighting { Day = 0, Sunset = 1, Night = 2 };
@@ -37,6 +48,7 @@ public:
 
     // ---- undoable edits ----
     Part* insertPart(const std::string& name, const Vec3& size, int brickColor, PartShape shape = PartShape::Block);   // in front of the camera
+    Part* insertPartFrom(PartState templ);                 // position is chosen in front of the camera
     void toggleAnchorSelected();
     void toggleLockSelected();
     void colorSelected(int brickColor);
@@ -64,6 +76,11 @@ public:
 
     // ---- camera (reported by the viewport; used to place inserted parts) ----
     void setCamera(const Vec3& position, const Vec3& look) { m_camPos = position; m_camLook = look; }
+
+    // ---- place settings ----
+    const PlaceSettings& settings() const { return m_settings; }
+    void setSettings(const PlaceSettings& s);
+    void loadSettings(const PlaceSettings& s) { m_settings = s; }     // used by the file loader (no undo / modified flag)
 
     // ---- Run (physics) ----
     RunState runState() const { return m_run; }
@@ -99,6 +116,8 @@ public:
     Signal<>                    snapChanged;
     Signal<>                    lightingChanged;
     Signal<>                    runStateChanged;
+    Signal<>                    playerChanged;        // health changed / died / respawned
+    Signal<>                    settingsChanged;
     Signal<>                    historyChanged;
     Signal<>                    titleChanged;         // file name or modified flag
     Signal<Part*>               partChanged;
@@ -136,6 +155,8 @@ private:
     std::vector<std::pair<std::shared_ptr<Part>, PartState>> m_snapshot;
     bool         m_modifiedBeforeRun = false;
     bool         m_solo = false;
+    PlaceSettings m_settings;
+    int          m_lastHealth = 100;
     Character    m_character;
     Vec3         m_inputDir;
     bool         m_inputJump = false;

@@ -242,6 +242,7 @@ void Physics::start(const std::vector<Part*>& parts) {
         b.part = p;
         b.half = p->size * 0.5f;
         b.isStatic = p->anchored;
+        b.collides = p->canCollide;
         b.isSphere = p->shape == PartShape::Ball;
         b.radius = std::max(0.1f, std::min(p->size.x, std::min(p->size.y, p->size.z)) * 0.5f);
         const float vol = b.isSphere ? (4.0f / 3.0f) * 3.14159265f * b.radius * b.radius * b.radius : p->size.x * p->size.y * p->size.z;
@@ -304,6 +305,7 @@ void Physics::substep(float dt) {
         for (size_t j = i + 1; j < n; ++j) {
             Body& B = m_bodies[j];
             if (B.dead) continue;
+            if (!A.collides || !B.collides) continue;
             if (A.immovable() && B.immovable()) continue;
             const float rb = B.isSphere ? B.radius : B.half.length();
             const Vec3 d = B.part->position - A.part->position;

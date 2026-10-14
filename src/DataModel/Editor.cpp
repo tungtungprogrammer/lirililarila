@@ -26,6 +26,28 @@ void Editor::newPlace() {
     spawn.anchored = true;
     ws->createPart(spawn);
 
+    // A small obstacle course to try Play Solo on.
+    PartState course;
+    course.anchored = true;
+    course.name = "Ramp"; course.shape = PartShape::Wedge; course.size = Vec3(8, 6, 12);
+    course.position = Vec3(-16, 3, 4); course.orientation = Mat3::rotationY(180.0f);
+    ws->createPart(course);
+    course = PartState(); course.anchored = true;
+    course.name = "Lava"; course.size = Vec3(10, 0.4f, 10); course.position = Vec3(16, 0.2f, 2);
+    course.brickColor = kBrickBrightRed; course.behavior = PartBehavior::Kill; ws->createPart(course);
+    course = PartState(); course.anchored = true;
+    course.name = "JumpPad"; course.size = Vec3(4, 0.4f, 4); course.position = Vec3(8, 0.2f, 10);
+    course.brickColor = kBrickBrightGreen; course.behavior = PartBehavior::JumpPad; course.behaviorValue = 100; ws->createPart(course);
+    course = PartState(); course.anchored = true;
+    course.name = "Spinner"; course.size = Vec3(16, 1, 1.5f); course.position = Vec3(-4, 1.0f, -12);
+    course.brickColor = kBrickBrightYellow; course.behavior = PartBehavior::Spin; course.behaviorValue = 60; ws->createPart(course);
+    course = PartState(); course.anchored = true;
+    course.name = "Conveyor"; course.size = Vec3(4, 0.4f, 12); course.position = Vec3(0, 0.2f, -28);
+    course.behavior = PartBehavior::Conveyor; course.behaviorValue = 14; ws->createPart(course);
+    course = PartState(); course.anchored = true;
+    course.name = "Glass"; course.size = Vec3(8, 8, 0.5f); course.position = Vec3(14, 4, -10);
+    course.brickColor = kBrickBrightBlue; course.transparency = 0.5f; ws->createPart(course);
+
     PartState b;
     b.name = "Part";
     b.brickColor = kBrickBrightRed;    b.position = Vec3(0, 0.6f, 0);    ws->createPart(b);
@@ -51,12 +73,14 @@ void Editor::resetPlace(const std::shared_ptr<Workspace>& ws, const std::string&
     m_filePath = filePath;
     m_modified = false;
     m_lighting = Lighting::Day;
+    m_settings = PlaceSettings();
     ++m_version;
     treeChanged();
     selectionChanged();
     historyChanged();
     titleChanged();
     lightingChanged();
+    settingsChanged();
 }
 
 void Editor::setFilePath(const std::string& p) { m_filePath = p; titleChanged(); }
@@ -138,7 +162,19 @@ void Editor::record(Command c) {
 // ---------------------------------------------------------------- edits
 
 Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickColor, PartShape shape) {
+    PartState s;
+    s.name = name;
+    s.size = size;
+    s.brickColor = brickColor;
+    s.shape = shape;
+    return insertPartFrom(s);
+}
+
+// `templ` supplies everything except the position, which is chosen in front of the camera.
+Part* Editor::insertPartFrom(PartState s) {
     if (editBlocked()) return nullptr;
+    const std::string name = s.name;
+    const Vec3 size = s.size;
     // Aim at the ground in front of the camera, falling back to a point in the air.
     Vec3 pos = m_camPos + m_camLook * 14.0f;
     if (m_camLook.y < -0.05f) {
@@ -148,12 +184,7 @@ Part* Editor::insertPart(const std::string& name, const Vec3& size, int brickCol
     pos = snapPoint(pos);
     pos.y = std::max(pos.y, 0.0f) + size.y * 0.5f;
 
-    PartState s;
-    s.name = name;
     s.position = pos;
-    s.size = size;
-    s.brickColor = brickColor;
-    s.shape = shape;
 
     auto part = std::make_shared<Part>();
     part->setState(s);
@@ -362,6 +393,7 @@ void Editor::play() {
     m_workspace->collectParts(parts);
     for (Part* p : parts) m_snapshot.emplace_back(sharedPart(p), p->state());
     m_modifiedBeforeRun = m_modified;
+    m_physics.gravity = m_settings.gravity;
     m_physics.start(parts);
     m_accumulator = 0;
     m_run = RunState::Running;
@@ -396,14 +428,26 @@ void Editor::advance(float seconds) {
     m_accumulator += std::min(seconds, 0.1f);
     int steps = 0;
     while (m_accumulator >= 1.0f / 60.0f && steps < 4) {
-        m_physics.step(1.0f / 60.0f);
-        if (m_solo) {
+        {
+            // Spinning parts are driven here (kinematically); the player riding one is carried round with it.
             std::vector<Part*> world;
             m_workspace->collectParts(world);
-            m_character.step(1.0f / 60.0f, m_inputDir, m_inputJump, world, &m_physics);
-            if (m_character.feet.y < -100.0f) {            // fell off the world: respawn
-                float yaw; const Vec3 sp = spawnPoint(yaw);
-                m_character.spawn(sp, yaw);
+            for (Part* p : world) {
+                if (p->behavior != PartBehavior::Spin || !p->anchored) continue;
+                const float deg = (p->behaviorValue != 0 ? p->behaviorValue : 60.0f) / 60.0f;
+                const Mat3 spin = Mat3::rotationY(deg);
+                p->orientation = spin * p->orientation;
+                if (m_solo && m_character.supportPart() == p && !m_character.dead) {
+                    m_character.feet = p->position + spin * (m_character.feet - p->position);
+                    m_character.yaw += deg * 0.017453292f;
+                }
+            }
+            m_physics.step(1.0f / 60.0f);
+            if (m_solo) {
+                m_character.step(1.0f / 60.0f, m_inputDir, m_inputJump, world, &m_physics);
+                if (m_character.diedEvent) { m_character.diedEvent = false; log("Player died"); playerChanged(); }
+                if (m_character.respawnEvent) { m_character.respawnEvent = false; log("Player respawned"); playerChanged(); }
+                if (int(m_character.health) != m_lastHealth) { m_lastHealth = int(m_character.health); playerChanged(); }
             }
         }
         m_accumulator -= 1.0f / 60.0f;
@@ -431,10 +475,19 @@ void Editor::playSolo() {
     m_solo = true;
     float yaw;
     const Vec3 sp = spawnPoint(yaw);
+    m_character.configure(m_settings.walkSpeed, m_settings.jumpPower, m_settings.gravity, m_settings.maxHealth);
     m_character.spawn(sp, yaw);
+    m_lastHealth = int(m_character.health);
     m_inputDir = Vec3();
     m_inputJump = false;
     select(nullptr);
     play();                    // snapshot + physics
     runStateChanged();
+}
+
+void Editor::setSettings(const PlaceSettings& s) {
+    if (m_settings == s || editBlocked()) return;
+    m_settings = s;
+    touch();
+    settingsChanged();
 }
