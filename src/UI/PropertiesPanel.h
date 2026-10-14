@@ -35,5 +35,8 @@ private:
     QComboBox* m_anchored = nullptr;
     QComboBox* m_shape = nullptr;
     QComboBox* m_locked = nullptr;
+    QComboBox* m_canCollide = nullptr;
+    QComboBox* m_behavior = nullptr;
+    QLineEdit* m_behaviorValue = nullptr;
     QLineEdit* m_transparency = nullptr;
 };

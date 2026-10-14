@@ -82,7 +82,8 @@ void PropertiesPanel::rebuild() {
     m_busy = true;
     clear();
     m_class = m_name = m_position = m_rotation = m_size = nullptr;
-    m_color = m_topSurface = m_anchored = m_shape = m_locked = nullptr;
+    m_color = m_topSurface = m_anchored = m_shape = m_locked = m_canCollide = m_behavior = nullptr;
+    m_behaviorValue = nullptr;
     m_transparency = nullptr;
     m_part = m_editor.selected();
 
@@ -118,6 +119,19 @@ void PropertiesPanel::rebuild() {
         m_locked->addItem("false", false);
         m_locked->addItem("true", true);
         addRow(behavior, tr("Locked"), m_locked);
+        m_canCollide = new QComboBox;
+        m_canCollide->addItem("true", true);
+        m_canCollide->addItem("false", false);
+        addRow(behavior, tr("CanCollide"), m_canCollide);
+        m_behavior = new QComboBox;
+        m_behavior->addItem("None", static_cast<int>(PartBehavior::None));
+        m_behavior->addItem("Kill (lava)", static_cast<int>(PartBehavior::Kill));
+        m_behavior->addItem("JumpPad", static_cast<int>(PartBehavior::JumpPad));
+        m_behavior->addItem("Conveyor", static_cast<int>(PartBehavior::Conveyor));
+        m_behavior->addItem("Spin", static_cast<int>(PartBehavior::Spin));
+        addRow(behavior, tr("Behavior"), m_behavior);
+        m_behaviorValue = addTextRow(behavior, tr("BehaviorValue"));
+        m_behaviorValue->setToolTip(tr("JumpPad: jump speed (0 = 90)\nConveyor: belt speed (0 = 16)\nSpin: degrees per second (0 = 60)"));
 
         QTreeWidgetItem* part = addCategory(tr("Part"));
         m_position = addTextRow(part, tr("Position"));
@@ -166,6 +180,20 @@ void PropertiesPanel::rebuild() {
             t = std::floor(std::max(0.0f, std::min(1.0f, t)) * 10.0f + 0.5f) / 10.0f;   // tenths
             commit([&](PartState& s) { s.transparency = t; }, tr("Change Transparency of"));
         });
+        connect(m_canCollide, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
+            const bool c = m_canCollide->itemData(i).toBool();
+            commit([&](PartState& s) { s.canCollide = c; }, tr("Change CanCollide of"));
+        });
+        connect(m_behavior, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
+            const PartBehavior b = static_cast<PartBehavior>(m_behavior->itemData(i).toInt());
+            commit([&](PartState& s) { s.behavior = b; }, tr("Change Behavior of"));
+        });
+        connect(m_behaviorValue, &QLineEdit::editingFinished, this, [this]() {
+            bool ok = false;
+            const float v = m_behaviorValue->text().toFloat(&ok);
+            if (!ok) { m_editor.log("BehaviorValue needs a number"); refreshValues(); return; }
+            commit([&](PartState& s) { s.behaviorValue = v; }, tr("Change BehaviorValue of"));
+        });
         connect(m_anchored, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
             const bool a = m_anchored->itemData(i).toBool();
             commit([&](PartState& s) { s.anchored = a; }, tr("Anchor"));
@@ -196,6 +224,9 @@ void PropertiesPanel::refreshValues() {
     if (m_topSurface) { m_topSurface->setCurrentIndex(std::max(0, m_topSurface->findData(static_cast<int>(s.topSurface)))); }
     if (m_anchored) { m_anchored->setCurrentIndex(s.anchored ? 0 : 1); }
     if (m_locked) { m_locked->setCurrentIndex(s.locked ? 1 : 0); }
+    if (m_canCollide) { m_canCollide->setCurrentIndex(s.canCollide ? 0 : 1); }
+    if (m_behavior) { m_behavior->setCurrentIndex(std::max(0, m_behavior->findData(static_cast<int>(s.behavior)))); }
+    setText(m_behaviorValue, num(s.behaviorValue));
     if (m_shape) { m_shape->setCurrentIndex(std::max(0, m_shape->findData(static_cast<int>(s.shape)))); }
     setText(m_transparency, num(s.transparency));
     m_busy = wasBusy;

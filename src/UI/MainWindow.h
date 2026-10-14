@@ -34,6 +34,7 @@ private:
     bool saveTo(const QString& path);
     void about();
     void controls();
+    void placeSettings();
 
     Editor&          m_editor;
     ViewportWidget*  m_viewport = nullptr;
@@ -48,6 +49,7 @@ private:
     QAction *aInsertBrick, *aInsertPlate, *aInsertCube;
     QAction *aAbout, *aControls;
     QAction *aRun, *aPause, *aStop, *aPlaySolo;
+    QAction *aSettings;
     QAction *aAnchor, *aLock, *aResetCamera, *aFocus;
     QActionGroup* m_lightGroup = nullptr;
     QLabel* m_info = nullptr;

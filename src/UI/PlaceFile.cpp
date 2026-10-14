@@ -29,6 +29,10 @@ bool save(const Editor& editor, const QString& path, QString* error) {
     w.writeAttribute("version", "1");
     w.writeStartElement("Workspace");
     w.writeAttribute("lighting", QString::number(static_cast<int>(editor.lighting())));
+    w.writeAttribute("gravity", QString::number(static_cast<double>(editor.settings().gravity), 'g', 6));
+    w.writeAttribute("walkSpeed", QString::number(static_cast<double>(editor.settings().walkSpeed), 'g', 6));
+    w.writeAttribute("jumpPower", QString::number(static_cast<double>(editor.settings().jumpPower), 'g', 6));
+    w.writeAttribute("maxHealth", QString::number(static_cast<double>(editor.settings().maxHealth), 'g', 6));
 
     std::vector<Part*> parts;
     editor.workspace()->collectParts(parts);
@@ -48,6 +52,9 @@ bool save(const Editor& editor, const QString& path, QString* error) {
         w.writeAttribute("shape", QString::number(static_cast<int>(p->shape)));
         w.writeAttribute("transparency", QString::number(static_cast<double>(p->transparency), 'g', 3));
         w.writeAttribute("locked", p->locked ? "true" : "false");
+        w.writeAttribute("canCollide", p->canCollide ? "true" : "false");
+        w.writeAttribute("behavior", QString::number(static_cast<int>(p->behavior)));
+        w.writeAttribute("behaviorValue", QString::number(static_cast<double>(p->behaviorValue), 'g', 6));
         w.writeEndElement();
     }
     w.writeEndElement();   // Workspace
@@ -67,12 +74,18 @@ bool load(Editor& editor, const QString& path, QString* error) {
     auto ws = std::make_shared<Workspace>();
     bool sawRoot = false;
     int lighting = 0;
+    PlaceSettings settings;
     while (!r.atEnd()) {
         r.readNext();
         if (!r.isStartElement()) { continue; }
         if (r.name() == QLatin1String("OldBloxPlace")) { sawRoot = true; continue; }
         if (r.name() == QLatin1String("Workspace")) {
             lighting = std::max(0, std::min(2, r.attributes().value("lighting").toInt()));
+            const QXmlStreamAttributes wa = r.attributes();
+            if (wa.hasAttribute("gravity")) settings.gravity = wa.value("gravity").toFloat();
+            if (wa.hasAttribute("walkSpeed")) settings.walkSpeed = wa.value("walkSpeed").toFloat();
+            if (wa.hasAttribute("jumpPower")) settings.jumpPower = wa.value("jumpPower").toFloat();
+            if (wa.hasAttribute("maxHealth")) settings.maxHealth = wa.value("maxHealth").toFloat();
             continue;
         }
         if (r.name() != QLatin1String("Part")) { continue; }
@@ -93,6 +106,9 @@ bool load(Editor& editor, const QString& path, QString* error) {
         s.shape = static_cast<PartShape>(std::max(0, std::min(3, a.value("shape").toInt())));
         s.transparency = std::max(0.0f, std::min(1.0f, a.value("transparency").toFloat()));
         s.locked = a.value("locked") == QLatin1String("true");
+        s.canCollide = a.value("canCollide") != QLatin1String("false");
+        s.behavior = static_cast<PartBehavior>(std::max(0, std::min(4, a.value("behavior").toInt())));
+        s.behaviorValue = a.value("behaviorValue").toFloat();
         ws->createPart(s);
     }
     if (r.hasError() || !sawRoot) {
@@ -101,6 +117,7 @@ bool load(Editor& editor, const QString& path, QString* error) {
     }
     editor.resetPlace(ws, path.toStdString());
     editor.setLighting(static_cast<Lighting>(lighting));
+    editor.loadSettings(settings);
     editor.setModified(false);
     return true;
 }

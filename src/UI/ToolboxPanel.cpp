@@ -12,7 +12,13 @@ const std::vector<ToolboxPanel::Preset>& ToolboxPanel::presets() {
         {"Ball",   "Sphere, 4 studs across",    Vec3(4, 4, 4), PartShape::Ball},
         {"Cylinder", "Cylinder lying along X",  Vec3(4, 2, 2), PartShape::Cylinder},
         {"Wedge",  "Ramp / slope",              Vec3(4, 2, 4), PartShape::Wedge},
-        {"Spawn",  "Where the player appears in Play Solo", Vec3(6, 1, 6), PartShape::Block},
+        {"Spawn",  "Where the player appears in Play Solo", Vec3(6, 1, 6), PartShape::Block, kBrickMediumStoneGrey, true, 0, PartBehavior::None, 0, "SpawnLocation"},
+        {"Ramp",   "Walkable ramp, 8 wide, 6 high, 12 long", Vec3(8, 6, 12), PartShape::Wedge, kBrickMediumStoneGrey, true},
+        {"Lava",   "Kills the player on touch", Vec3(10, 0.4f, 10), PartShape::Block, kBrickBrightRed, true, 0, PartBehavior::Kill, 0, "Lava"},
+        {"JumpPad", "Launches the player upward", Vec3(4, 0.4f, 4), PartShape::Block, kBrickBrightGreen, true, 0, PartBehavior::JumpPad, 100, "JumpPad"},
+        {"Conveyor", "Carries the player along its -Z direction", Vec3(4, 0.4f, 12), PartShape::Block, kBrickMediumStoneGrey, true, 0, PartBehavior::Conveyor, 14, "Conveyor"},
+        {"Spinner", "A bar that turns around; ride it or get knocked off", Vec3(16, 1, 1.5f), PartShape::Block, kBrickBrightYellow, true, 0, PartBehavior::Spin, 60, "Spinner"},
+        {"Glass",  "See-through wall", Vec3(8, 8, 0.5f), PartShape::Block, kBrickBrightBlue, true, 0.5f},
     };
     return list;
 }
@@ -33,11 +39,14 @@ ToolboxPanel::ToolboxPanel(Editor& editor, QWidget* parent) : QListWidget(parent
 void ToolboxPanel::insert(int index) {
     if (index < 0 || index >= static_cast<int>(presets().size())) { return; }
     const Preset& p = presets()[static_cast<std::size_t>(index)];
-    Part* part = m_editor.insertPart(p.shape == PartShape::Block ? "Part" : p.label, p.size, kBrickMediumStoneGrey, p.shape);
-    if (part && std::string(p.label) == "Spawn") {
-        PartState s = part->state();
-        s.name = "SpawnLocation";
-        s.anchored = true;
-        m_editor.setPartState(part, s, "Make SpawnLocation");
-    }
+    PartState s;
+    s.name = p.partName ? p.partName : (p.shape == PartShape::Block ? "Part" : p.label);
+    s.size = p.size;
+    s.shape = p.shape;
+    s.brickColor = p.color;
+    s.anchored = p.anchored;
+    s.transparency = p.transparency;
+    s.behavior = p.behavior;
+    s.behaviorValue = p.value;
+    m_editor.insertPartFrom(s);
 }

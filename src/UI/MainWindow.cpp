@@ -3,11 +3,16 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMenuBar>
+#include <QPushButton>
 #include <QMessageBox>
 #include <QStatusBar>
 #include <QToolBar>
@@ -43,6 +48,8 @@ MainWindow::MainWindow(Editor& editor, QWidget* parent) : QMainWindow(parent), m
     m_editor.snapChanged.connect([this] { refreshActions(); });
     m_editor.lightingChanged.connect([this] { refreshActions(); });
     m_editor.runStateChanged.connect([this] { refreshActions(); });
+    m_editor.playerChanged.connect([this] { refreshActions(); });
+    m_editor.settingsChanged.connect([this] { refreshActions(); });
     m_editor.treeChanged.connect([this] { refreshActions(); });
     m_editor.partChanged.connect([this](Part*) { refreshActions(); });
     m_editor.output.connect([this](const std::string& s) {
@@ -93,6 +100,7 @@ void MainWindow::buildActions() {
     aPlaySolo = mk("Play &Solo", Icons::PlaySolo, QKeySequence(Qt::Key_F7));
     aPause = mk("&Pause", Icons::Pause, QKeySequence(Qt::Key_F6));
     aStop = mk("S&top", Icons::Stop, QKeySequence(Qt::SHIFT | Qt::Key_F5));
+    aSettings = mk("Place &Settings...", Icons::About, QKeySequence(), false);
     aAnchor = mk("&Anchor / Unanchor", Icons::Move, QKeySequence(Qt::CTRL | Qt::Key_B), false);
     aLock = mk("&Lock / Unlock", Icons::Move, QKeySequence(Qt::CTRL | Qt::Key_L), false);
     aResetCamera = mk("&Reset Camera", Icons::Select, QKeySequence(Qt::CTRL | Qt::Key_Home), false);
@@ -119,6 +127,7 @@ void MainWindow::buildActions() {
     connect(aInsertBrick, &QAction::triggered, this, [this] { m_toolbox->insert(0); });
     connect(aInsertPlate, &QAction::triggered, this, [this] { m_toolbox->insert(1); });
     connect(aInsertCube, &QAction::triggered, this, [this] { m_toolbox->insert(2); });
+    connect(aSettings, &QAction::triggered, this, &MainWindow::placeSettings);
     connect(aRun, &QAction::triggered, this, [this] { m_editor.play(); });
     connect(aPlaySolo, &QAction::triggered, this, [this] { m_editor.playSolo(); });
     connect(aPause, &QAction::triggered, this, [this] { m_editor.pause(); });
@@ -232,6 +241,8 @@ void MainWindow::buildMenus() {
     tools->addAction(aPause);
     tools->addAction(aStop);
     tools->addSeparator();
+    tools->addAction(aSettings);
+    tools->addSeparator();
     QMenu* snap = tools->addMenu("&Grid Snap");
     m_snapGroup = new QActionGroup(this);
     struct Opt { const char* label; float value; };
@@ -289,6 +300,7 @@ void MainWindow::refreshActions() {
     aPlaySolo->setEnabled(!m_editor.soloMode() || rs == RunState::Paused);
     aPause->setEnabled(rs == RunState::Running);
     aStop->setEnabled(rs != RunState::Stopped);
+    aSettings->setEnabled(rs == RunState::Stopped);
     if (rs != RunState::Stopped) {
         for (QAction* a : {aUndo, aRedo, aCut, aPaste, aDelete, aDuplicate, aRotate, aTilt, aAnchor, aLock,
                            aInsertBrick, aInsertPlate, aInsertCube, aSave, aSaveAs})
@@ -311,8 +323,10 @@ void MainWindow::refreshActions() {
     if (rs != RunState::Stopped) {
         if (m_editor.soloMode())
             m_status->setText(rs == RunState::Running
-                                  ? "Playing solo - WASD / arrows move, Space jumps, right-drag turns the camera, wheel zooms. Shift+F5 stops."
-                                  : "Paused - Run resumes, Stop returns to editing");
+                                  ? QString("Health: %1 / %2    WASD move, Space jump, right-drag camera, wheel zoom, Shift+F5 stop")
+                                        .arg(m_editor.character() ? int(m_editor.character()->health + 0.999f) : 0)
+                                        .arg(int(m_editor.settings().maxHealth))
+                                  : QString("Paused - Run resumes, Stop returns to editing"));
         else
             m_status->setText(rs == RunState::Running ? "Running - press Stop (Shift+F5) to return to editing"
                                                       : "Paused - Run resumes, Stop returns to editing");
@@ -381,6 +395,45 @@ bool MainWindow::fileSaveAs() {
     return saveTo(path);
 }
 
+void MainWindow::placeSettings() {
+    QDialog dlg(this);
+    dlg.setWindowTitle("Place Settings");
+    auto* form = new QFormLayout(&dlg);
+    const PlaceSettings cur = m_editor.settings();
+    auto spin = [&](double value, double lo, double hi, const QString& tip) {
+        auto* s = new QDoubleSpinBox(&dlg);
+        s->setRange(lo, hi);
+        s->setDecimals(1);
+        s->setValue(value);
+        s->setToolTip(tip);
+        return s;
+    };
+    auto* gravity = spin(static_cast<double>(cur.gravity), 0, 2000, "Workspace.Gravity in studs per second squared (the classic value is 196.2)");
+    auto* walk = spin(static_cast<double>(cur.walkSpeed), 0, 200, "Humanoid.WalkSpeed in studs per second (classic: 16)");
+    auto* jump = spin(static_cast<double>(cur.jumpPower), 0, 300, "Humanoid.JumpPower: initial upward speed (55 is about 7 studs high)");
+    auto* health = spin(static_cast<double>(cur.maxHealth), 1, 100000, "Humanoid.MaxHealth (classic: 100)");
+    form->addRow("Gravity", gravity);
+    form->addRow("Player WalkSpeed", walk);
+    form->addRow("Player JumpPower", jump);
+    form->addRow("Player MaxHealth", health);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults, &dlg);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, &dlg, [&] {
+        const PlaceSettings d;
+        gravity->setValue(static_cast<double>(d.gravity)); walk->setValue(static_cast<double>(d.walkSpeed));
+        jump->setValue(static_cast<double>(d.jumpPower)); health->setValue(static_cast<double>(d.maxHealth));
+    });
+    if (dlg.exec() != QDialog::Accepted) return;
+    PlaceSettings s;
+    s.gravity = static_cast<float>(gravity->value());
+    s.walkSpeed = static_cast<float>(walk->value());
+    s.jumpPower = static_cast<float>(jump->value());
+    s.maxHealth = static_cast<float>(health->value());
+    m_editor.setSettings(s);
+}
+
 void MainWindow::controls() {
     QMessageBox::information(this, "Controls",
         "<b>Camera</b><br>Right mouse drag: look &nbsp; W A S D: fly &nbsp; Q / E: down / up<br>"
@@ -391,6 +444,8 @@ void MainWindow::controls() {
         "F7 Play Solo: WASD / arrows walk, Space jumps, right-drag turns the camera, wheel zooms<br>"
         "F5 Run &nbsp; F6 Pause &nbsp; Shift+F5 Stop (the place is restored exactly as it was)<br>"
         "Ctrl+R rotate &nbsp; Ctrl+T tilt &nbsp; Ctrl+B anchor &nbsp; Ctrl+L lock &nbsp; Del delete<br>"
+        "<b>Gameplay parts</b> (Properties &gt; Behavior)<br>Kill = lava, JumpPad, Conveyor, Spin. CanCollide = false makes a ghost part.<br>"
+        "Standing on a SpawnLocation sets where you respawn.<br><br>"
         "Locked parts cannot be clicked in the 3D view (select them in the Explorer).");
 }
 
