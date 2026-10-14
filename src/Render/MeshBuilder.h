@@ -23,6 +23,9 @@ Vec3 brickRgb(int brickColorId);   // 0..1 sRGB
 // A Part as a box, plus studs on top (real geometry for small parts, a shader pattern for huge ones).
 void addPart(MeshData& m, const Part& part);
 
+// One round stud standing on `base` (pointing along the rotation's Y axis).
+void addStud(MeshData& m, const Vec3& base, const Mat3& rot, const Vec3& color, const Vec3& aux = Vec3());
+
 void addBox(MeshData& m, const Vec3& center, const Mat3& rot, const Vec3& half, const Vec3& color);
 // Arrow along dir: shaft + pyramid head. base = start of shaft.
 void addArrow(MeshData& m, const Vec3& base, const Vec3& dir, float length, float radius, const Vec3& color);

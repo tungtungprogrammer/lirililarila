@@ -42,6 +42,8 @@ struct Face { int n, u, v; float sign; };
 const Face kFaces[6] = {{0, 1, 2, +1}, {0, 2, 1, -1}, {1, 2, 0, +1}, {1, 0, 2, -1}, {2, 0, 1, +1}, {2, 1, 0, -1}};
 
 
+}  // namespace
+
 void addStud(MeshData& m, const Vec3& base, const Mat3& rot, const Vec3& color, const Vec3& aux) {
     const Vec3 up = geom::column(rot, 1);
     int ring0[kStudSides], ring1[kStudSides];
@@ -67,8 +69,6 @@ void addStud(MeshData& m, const Vec3& base, const Mat3& rot, const Vec3& color, 
     }
     for (int i = 0; i < kStudSides; ++i) m.addTri(centre, cap[i], cap[(i + 1) % kStudSides], up);
 }
-
-}  // namespace
 
 void addBox(MeshData& m, const Vec3& center, const Mat3& rot, const Vec3& half, const Vec3& color) {
     for (const Face& f : kFaces) {

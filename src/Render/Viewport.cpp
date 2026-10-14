@@ -284,6 +284,7 @@ public:
                 MeshData body;
                 for (Part* p : ch->parts()) meshbuilder::addPart(body, *p);
                 for (const Character::FaceBox& fb : ch->face()) meshbuilder::addBox(body, fb.center, fb.rot, fb.half, Vec3(0.04f, 0.04f, 0.04f));
+                meshbuilder::addStud(body, ch->headStudBase(), ch->headStudRotation(), meshbuilder::brickRgb(kBrickBrightYellow));
                 drawMesh(rd, upload(body, VertexBuffer::WRITE_EVERY_FRAME), vp, false, L);
             }
         }
@@ -298,6 +299,22 @@ public:
             rd->setBlendFunc(RenderDevice::BLEND_SRC_ALPHA, RenderDevice::BLEND_ONE_MINUS_SRC_ALPHA);
             drawMesh(rd, m_sceneAlpha, vp, false, L);
             rd->popState();
+        }
+
+        // soft blob shadow under the player, so jumps and edges can be judged
+        if (Character* ch = m_editor.character()) {
+            if (!ch->dead || ch->deadTime < 0.4f) {
+                MeshData sh;
+                if (shadowDisc(*ch, sh)) {
+                    rd->pushState();
+                    rd->setDepthTest(RenderDevice::DEPTH_LEQUAL);
+                    rd->setDepthWrite(false);
+                    rd->setCullFace(CullFace::NONE);
+                    rd->setBlendFunc(RenderDevice::BLEND_SRC_ALPHA, RenderDevice::BLEND_ONE_MINUS_SRC_ALPHA);
+                    drawMesh(rd, upload(sh, VertexBuffer::WRITE_EVERY_FRAME), vp, false, L);
+                    rd->popState();
+                }
+            }
         }
 
         // selection box and handles (rebuilt every frame; they are tiny)
@@ -334,7 +351,7 @@ private:
         for (const Part* p : parts) {
             if (p->transparency >= 0.95f) continue;                    // invisible
             if (p->transparency > 0.0f) meshbuilder::addPart(glass, *p);
-            else if (!p->anchored)      meshbuilder::addPart(moving, *p);
+            else if (!p->anchored || p->behavior == PartBehavior::Spin) meshbuilder::addPart(moving, *p);
             else if (staticStale)       meshbuilder::addPart(fixedMesh, *p);
         }
         if (staticStale) m_scene = upload(fixedMesh, VertexBuffer::WRITE_ONCE);
@@ -364,6 +381,32 @@ private:
         args.setUniform("uAmbient", L.ambient, true);
         args.setUniform("uSunPower", L.sunPower, true);
         rd->apply(m_sceneShader, args);
+    }
+
+    // A dark translucent disc on whatever is below the player's feet. Returns false if there is nothing below.
+    bool shadowDisc(const Character& ch, MeshData& out) {
+        std::vector<Part*> parts;
+        m_editor.workspace()->collectParts(parts);
+        const geom::Ray ray{ch.feet + Vec3(0, 0.6f, 0), Vec3(0, -1, 0)};
+        float best = 1e30f;
+        for (const Part* p : parts) {
+            if (p->transparency > 0.0f || !p->canCollide) continue;
+            const float t = geom::intersectBox(ray, p->position, p->orientation, p->size * 0.5f);
+            if (t >= 0 && t < best) best = t;
+        }
+        if (best > 60.0f) return false;
+        const float k = std::max(0.35f, 1.0f - best / 40.0f);              // fades and shrinks as the player rises
+        const Vec3 c = ray.origin + ray.dir * best + Vec3(0, 0.04f, 0);
+        const float r = 1.5f * k;
+        const Vec3 aux(0, 0, 2.0f * 6.0f);                                  // 60% transparent (see MeshBuilder)
+        const int centre = out.addVertex(c, Vec3(0, 1, 0), Vec3(0, 0, 0), aux);
+        int ring[20];
+        for (int i = 0; i < 20; ++i) {
+            const float a = 6.2831853f * i / 20.0f;
+            ring[i] = out.addVertex(c + Vec3(std::cos(a) * r, 0, std::sin(a) * r), Vec3(0, 1, 0), Vec3(0, 0, 0), aux);
+        }
+        for (int i = 0; i < 20; ++i) out.addTri(centre, ring[i], ring[(i + 1) % 20], Vec3(0, 1, 0));
+        return true;
     }
 
     // Orbit camera behind the player; pulled in when something is in the way.
