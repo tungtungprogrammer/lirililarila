@@ -125,7 +125,7 @@ public:
                 m_orbitPitch = -0.3f;
                 m_orbitDist = 14.0f;
                 m_wasSolo = true;
-                m_soloTime = 0;
+                m_soloTime = 0; m_wipeouts = 0; m_wasDead = false;
             }
             if (right) {
                 m_orbitYaw -= (mouse.x - m_lastMouse.x) * 0.005f;
@@ -331,6 +331,9 @@ public:
             hs.health = ch->health; hs.maxHealth = ch->maxHealth;
             hs.dead = ch->dead; hs.deadTime = ch->deadTime;
             hs.soloTime = m_soloTime;
+            if (ch->dead && !m_wasDead) ++m_wipeouts;
+            m_wasDead = ch->dead;
+            hs.wipeouts = m_wipeouts;
             MeshData hm;
             hud::build(hs, hm);
             if (!hm.idx.empty()) {
@@ -479,6 +482,8 @@ private:
 
     bool      m_wasSolo = false;
     float     m_soloTime = 0;
+    int       m_wipeouts = 0;
+    bool      m_wasDead = false;
     FlyCamera m_savedCamera;
     float     m_orbitYaw = 0, m_orbitPitch = -0.3f, m_orbitDist = 14.0f, m_camDist = 14.0f;
 };

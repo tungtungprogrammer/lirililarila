@@ -11,6 +11,10 @@ struct HudState {
     bool  dead = false;
     float deadTime = 0;                  // seconds since dying
     float soloTime = 0;                  // seconds since Play Solo started (controls hint fades out)
+    const char* playerName = "Player";  // shown on the leaderboard
+    int   points = 0;                    // leaderboard columns
+    int   knockouts = 0;
+    int   wipeouts = 0;                  // deaths
 };
 
 namespace hud {
